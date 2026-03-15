@@ -1,0 +1,393 @@
+# ══════════════════════════════════════════════════════════════════════════
+#  HULK.grammar
+#  Gramática formal del lenguaje HULK en notación BNF extendida.
+#
+#  Convenciones:
+#    →          producción
+#    |          alternativa
+#    ε          producción vacía
+#    'token'    terminal literal
+#    UPPER      terminal tipo (NUMBER, STRING, IDENTIFIER, …)
+#    CamelCase  no-terminal
+#    (* … *)    comentario
+# ══════════════════════════════════════════════════════════════════════════
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  0. Producción aumentada
+# ──────────────────────────────────────────────────────────────────────────
+
+Start → Program EOF
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  1. Programa
+#
+#  Un programa es una lista (posiblemente vacía) de declaraciones
+#  seguida de una expresión global que actúa como punto de entrada.
+#  El ';' final es opcional.
+# ──────────────────────────────────────────────────────────────────────────
+
+Program → DeclList Expr
+        | DeclList Expr ';'
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  2. Lista de declaraciones
+# ──────────────────────────────────────────────────────────────────────────
+
+DeclList → ε
+         | DeclList Decl
+
+Decl → FuncDecl
+     | TypeDecl
+     | ProtocolDecl
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  3. Declaración de función
+#
+#  Forma inline:    function id ( ParamList ) => Expr ;
+#  Forma completa:  function id ( ParamList ) BlockExpr
+#  Con tipo retorno se añade ':' TypeName antes del '=>' o '{'.
+# ──────────────────────────────────────────────────────────────────────────
+
+FuncDecl → 'function' IDENTIFIER '(' ParamList ')' '=>' Expr ';'
+         | 'function' IDENTIFIER '(' ParamList ')' BlockExpr
+         | 'function' IDENTIFIER '(' ParamList ')' ':' TypeName '=>' Expr ';'
+         | 'function' IDENTIFIER '(' ParamList ')' ':' TypeName BlockExpr
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  4. Parámetros
+# ──────────────────────────────────────────────────────────────────────────
+
+ParamList → ε
+          | ParamListNonEmpty
+
+ParamListNonEmpty → Param
+                  | ParamListNonEmpty ',' Param
+
+Param → IDENTIFIER
+      | IDENTIFIER ':' TypeName
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  5. Declaración de tipo
+#
+#  type Name TypeArgs InheritClause { TypeBody }
+# ──────────────────────────────────────────────────────────────────────────
+
+TypeDecl → 'type' IDENTIFIER TypeArgs InheritClause '{' TypeBody '}'
+
+TypeArgs → ε
+         | '(' TypeArgList ')'
+
+TypeArgList → Param
+            | TypeArgList ',' Param
+
+InheritClause → ε
+              | 'inherits' TypeName
+              | 'inherits' TypeName '(' ArgList ')'
+
+TypeBody → TypeMemberList
+
+TypeMemberList → ε
+               | TypeMemberList TypeMember
+
+TypeMember → AttributeDef
+           | MethodDef
+
+# Atributo con o sin anotación de tipo
+AttributeDef → IDENTIFIER '=' Expr ';'
+             | IDENTIFIER ':' TypeName '=' Expr ';'
+
+# Método con o sin anotación de tipo de retorno, inline o completo
+MethodDef → IDENTIFIER '(' ParamList ')' '=>' Expr ';'
+          | IDENTIFIER '(' ParamList ')' BlockExpr
+          | IDENTIFIER '(' ParamList ')' ':' TypeName '=>' Expr ';'
+          | IDENTIFIER '(' ParamList ')' ':' TypeName BlockExpr
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  6. Declaración de protocolo
+#
+#  protocol Name { ProtocolBody }
+#  protocol Name extends Name { ProtocolBody }
+# ──────────────────────────────────────────────────────────────────────────
+
+ProtocolDecl → 'protocol' IDENTIFIER '{' ProtocolBody '}'
+             | 'protocol' IDENTIFIER 'extends' TypeName '{' ProtocolBody '}'
+
+ProtocolBody → ProtocolMemberList
+
+ProtocolMemberList → ε
+                   | ProtocolMemberList ProtocolMember
+
+ProtocolMember → MethodSignature ';'
+
+# Las firmas de protocolo SIEMPRE llevan anotación de tipo de retorno
+MethodSignature → IDENTIFIER '(' ParamList ')' ':' TypeName
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  7. Nombres de tipo
+#
+#  Tres formas:
+#    Identifier     → tipo nominal simple
+#    Identifier[]   → tipo vector
+#    Identifier*    → tipo iterable (solo válido en anotaciones de parámetro)
+# ──────────────────────────────────────────────────────────────────────────
+
+TypeName → IDENTIFIER
+         | IDENTIFIER '[' ']'
+         | IDENTIFIER '*'
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  8. Argumentos de llamada
+# ──────────────────────────────────────────────────────────────────────────
+
+ArgList → ε
+        | ArgListNonEmpty
+
+ArgListNonEmpty → Expr
+                | ArgListNonEmpty ',' Expr
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  9. Expresiones  —  ordenadas de MENOR a MAYOR precedencia
+#
+#  Tabla de precedencia (↑ = mayor precedencia):
+#
+#    Nivel  Operadores                    Asociatividad
+#    ─────  ────────────────────────────  ─────────────
+#      1    := += -= *= /= %=            derecha
+#      2    |                            izquierda
+#      3    &                            izquierda
+#      4    == != < > <= >=              izquierda
+#      5    is  as                       izquierda
+#      6    @  @@                        izquierda
+#      7    +  -                         izquierda
+#      8    *  /  %                      izquierda
+#      9    ^  **                        derecha
+#     10    -  !  (unario)               derecha (prefijo)
+#     11    ++  --                       izquierda (postfijo)
+#     12    f()  .id  .id()  [i]         izquierda
+# ══════════════════════════════════════════════════════════════════════════
+
+Expr → AssignExpr
+
+
+# ── Nivel 1 : Asignación (derecha-asociativo) ─────────────────────────────
+
+AssignExpr → OrExpr
+           | OrExpr ':=' AssignExpr
+           | OrExpr '+=' AssignExpr
+           | OrExpr '-=' AssignExpr
+           | OrExpr '*=' AssignExpr
+           | OrExpr '/=' AssignExpr
+           | OrExpr '%=' AssignExpr
+
+
+# ── Nivel 2 : OR lógico ───────────────────────────────────────────────────
+
+OrExpr → AndExpr
+       | OrExpr '|' AndExpr
+
+
+# ── Nivel 3 : AND lógico ──────────────────────────────────────────────────
+
+AndExpr → CompareExpr
+        | AndExpr '&' CompareExpr
+
+
+# ── Nivel 4 : Comparación ─────────────────────────────────────────────────
+
+CompareExpr → IsAsExpr
+            | CompareExpr '==' IsAsExpr
+            | CompareExpr '!=' IsAsExpr
+            | CompareExpr '<'  IsAsExpr
+            | CompareExpr '>'  IsAsExpr
+            | CompareExpr '<=' IsAsExpr
+            | CompareExpr '>=' IsAsExpr
+
+
+# ── Nivel 5 : is / as ─────────────────────────────────────────────────────
+
+IsAsExpr → ConcatExpr
+         | IsAsExpr 'is' TypeName
+         | IsAsExpr 'as' TypeName
+
+
+# ── Nivel 6 : Concatenación ───────────────────────────────────────────────
+
+ConcatExpr → AddExpr
+           | ConcatExpr '@'  AddExpr
+           | ConcatExpr '@@' AddExpr
+
+
+# ── Nivel 7 : Suma / Resta ────────────────────────────────────────────────
+
+AddExpr → MulExpr
+        | AddExpr '+' MulExpr
+        | AddExpr '-' MulExpr
+
+
+# ── Nivel 8 : Multiplicación / División / Módulo ──────────────────────────
+
+MulExpr → PowerExpr
+        | MulExpr '*' PowerExpr
+        | MulExpr '/' PowerExpr
+        | MulExpr '%' PowerExpr
+
+
+# ── Nivel 9 : Potencia (derecha-asociativo) ───────────────────────────────
+
+PowerExpr → UnaryExpr
+          | UnaryExpr '^'  PowerExpr
+          | UnaryExpr '**' PowerExpr
+
+
+# ── Nivel 10 : Unario prefijo (derecha-asociativo) ────────────────────────
+
+UnaryExpr → PostfixExpr
+          | '-' UnaryExpr
+          | '!' UnaryExpr
+
+
+# ── Nivel 11 : Postfijo ───────────────────────────────────────────────────
+
+PostfixExpr → CallOrAccess
+            | CallOrAccess '++'
+            | CallOrAccess '--'
+
+
+# ── Nivel 12 : Llamadas y accesos (izquierda-asociativo) ──────────────────
+
+CallOrAccess → PrimaryExpr
+             | CallOrAccess '(' ArgList ')'              (* llamada *)
+             | CallOrAccess '.' IDENTIFIER               (* acceso atributo *)
+             | CallOrAccess '.' IDENTIFIER '(' ArgList ')'  (* llamada método *)
+             | CallOrAccess '[' Expr ']'                 (* indexación *)
+
+
+# ── Nivel 13 : Átomos ─────────────────────────────────────────────────────
+
+PrimaryExpr → NUMBER
+            | STRING
+            | CHAR
+            | 'true'
+            | 'false'
+            | 'null'
+            | IDENTIFIER
+            | 'base'
+            | '(' Expr ')'
+            | BlockExpr
+            | LetExpr
+            | IfExpr
+            | WhileExpr
+            | ForExpr
+            | NewExpr
+            | VectorLiteral
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  10. Expresiones compuestas
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── Bloque ────────────────────────────────────────────────────────────────
+#  El valor del bloque es la última expresión.
+#  El ';' final es opcional pero válido.
+
+BlockExpr → '{' ExprList '}'
+          | '{' ExprList ';' '}'
+
+ExprList → Expr
+         | ExprList ';' Expr
+
+
+# ── Let ───────────────────────────────────────────────────────────────────
+#  Múltiples bindings se separan con ','.
+#  Son semánticamente equivalentes a lets anidados.
+
+LetExpr → 'let' LetBindingList 'in' Expr
+
+LetBindingList → LetBinding
+               | LetBindingList ',' LetBinding
+
+LetBinding → IDENTIFIER '=' Expr
+           | IDENTIFIER ':' TypeName '=' Expr
+
+
+# ── If / Elif / Else ──────────────────────────────────────────────────────
+#  El 'else' es OBLIGATORIO en HULK — no existe dangling-else.
+
+IfExpr → 'if' '(' Expr ')' Expr ElifChain 'else' Expr
+
+ElifChain → ε
+          | ElifChain 'elif' '(' Expr ')' Expr
+
+
+# ── While ─────────────────────────────────────────────────────────────────
+
+WhileExpr → 'while' '(' Expr ')' Expr
+
+
+# ── For ───────────────────────────────────────────────────────────────────
+#  Itera sobre cualquier expresión que implemente el protocolo Iterable.
+
+ForExpr → 'for' '(' IDENTIFIER 'in' Expr ')' Expr
+
+
+# ── New ───────────────────────────────────────────────────────────────────
+
+NewExpr → 'new' TypeName '(' ArgList ')'
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  11. Vectores
+#
+#  ⚠  CONFLICTO CONOCIDO  ⚠
+#  La forma generadora usa '|' como separador,  el mismo token que
+#  el operador OR lógico (OrExpr).
+#  Dentro de '[' Expr '|' ...] el parser LALR(1) tiene un
+#  shift/reduce conflict en el token '|'.
+#  Se resuelve en table_builder.rs:
+#    – si el lookahead es '|' seguido de  IDENTIFIER 'in'  → generador
+#    – en cualquier otro caso               → continuar OrExpr
+# ══════════════════════════════════════════════════════════════════════════
+
+VectorLiteral → '[' ']'                                 (* vector vacío *)
+              | '[' ArgListNonEmpty ']'                 (* vector explícito *)
+              | '[' Expr '|' IDENTIFIER 'in' Expr ']'  (* generador *)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  TERMINALES
+#
+#  Literales
+#    NUMBER       número flotante de 32 bits, ej. 42  3.14
+#    STRING       cadena entre comillas dobles,  ej. "hello"
+#    CHAR         carácter entre comillas simples, ej. 'a'
+#    IDENTIFIER   secuencia alfanumérica que empieza con letra, ej. myVar
+#    EOF          fin de archivo  ($)
+#
+#  Keywords
+#    'if'  'elif'  'else'  'while'  'for'  'function'
+#    'let'  'in'  'type'  'new'  'inherits'  'base'
+#    'protocol'  'extends'  'true'  'false'  'null'
+#    'is'  'as'
+#
+#  Operadores multicarácter
+#    '**'  '++'  '--'  '@@'
+#    ':='  '+='  '-='  '*='  '/='  '%='
+#    '=='  '!='  '<='  '>='  '=>'  '->'
+#
+#  Operadores de un carácter
+#    '='  '<'  '>'  '+'  '-'  '*'  '/'  '%'  '^'  '&'  '|'  '!'  '@'
+#
+#  Delimitadores
+#    ';'  ':'  ','  '.'
+#    '('  ')'  '{'  '}'  '['  ']'
+# ══════════════════════════════════════════════════════════════════════════
