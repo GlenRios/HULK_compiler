@@ -37,7 +37,7 @@ impl TokenDefinition {
             // -----------------------------------
             TokenDefinition {
                 token_type: TokenType::STRING,
-                regex: "\"[ -~]*\"",
+                regex: "\"([ -!]|[#-~])*\"",
                 skippable: false,
             },
             TokenDefinition {
