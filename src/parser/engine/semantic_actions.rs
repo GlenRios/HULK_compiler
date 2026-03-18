@@ -1,8 +1,4 @@
 // src/parser/engine/semantic_actions.rs
-// VERSION: 4 — si el compilador acepta este archivo, es la versión correcta.
-// Para verificar: busca "VERSION: 4" en este archivo.
-// Si no lo ves, reemplaza el archivo completo con el descargado.
-
 
 use crate::parser::grammar::{Grammar, production::Production};
 use crate::parser::grammar::symbol::{
