@@ -140,27 +140,34 @@ impl TypeChecker {
             let pname = parent.name();
             if matches!(pname, "Number" | "String" | "Boolean") {
                 self.errors.push(SemanticError::InheritFromPrimitive {
-                    type_name: t.name.clone(), span: t.span,
+                    type_name: t.name.clone(),
+                    span: t.span,
                 });
             }
             // Verificar que el padre existe
             if self.types.types.get(pname).is_none() {
                 self.errors.push(SemanticError::UndefinedType {
-                    name: pname.into(), span: parent.span(),
+                    name: pname.into(),
+                    span: parent.span(),
                 });
             }
         }
 
+        // Resolver primero los parámetros del constructor, antes de mutar la jerarquía
+        let constructor_params: Vec<(String, HulkType)> = t
+            .type_args
+            .iter()
+            .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
+            .collect();
+
         // Registrar en la jerarquía
         self.types.types.entry(t.name.clone()).or_insert(TypeInfo {
-            name:               t.name.clone(),
-            parent:             t.parent.as_ref().map(|p| p.name().into()),
-            constructor_params: t.type_args.iter()
-                .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
-                .collect(),
-            attributes:         HashMap::new(),
-            methods:            HashMap::new(),
-            is_builtin:         false,
+            name: t.name.clone(),
+            parent: t.parent.as_ref().map(|p| p.name().into()),
+            constructor_params,
+            attributes: HashMap::new(),
+            methods: HashMap::new(),
+            is_builtin: false,
         });
 
         // Registrar en la tabla de símbolos (para `new T(...)`)
