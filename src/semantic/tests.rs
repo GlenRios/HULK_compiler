@@ -8,9 +8,7 @@
 //   check_ok!(program)         → el programa debe pasar sin errores
 //   check_err!(program, Kind)  → debe producir al menos un error de ese Kind
 
-#[cfg(test)]
-mod tests {
-    use crate::parser::ast::{
+use crate::parser::ast::{
         Decl, Expr, FuncDecl, Param, Program, Span,
         TypeDecl, TypeMember, AttributeDef, MethodDef,
         ProtocolDecl, MethodSignature,
@@ -1279,8 +1277,19 @@ mod tests {
             ],
             method_call(new_("B", vec![]), "val", vec![]),
         );
-        // base() existe → no debe haber UndefinedVariable para "base"
-        check_no_err!(p, SemanticError::UndefinedVariable { name, .. } if name == "base");
+
+        let errors = match analyze(&p) {
+            Ok(()) => vec![],
+            Err(errors) => errors,
+        };
+
+        assert!(
+            !errors.iter().any(|e| matches!(
+                e,
+                SemanticError::UndefinedVariable { name, .. } if name == "base"
+            )),
+            "base() no debe reportarse como UndefinedVariable"
+        );
     }
 
     #[test]
@@ -1434,4 +1443,3 @@ mod tests {
             errors.iter().map(|e| format!("  • {}", e)).collect::<Vec<_>>().join("\n")
         );
     }
-}
