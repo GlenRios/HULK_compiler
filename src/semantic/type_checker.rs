@@ -153,11 +153,14 @@ impl TypeChecker {
 
         // Registrar en la jerarquía
         self.types.types.entry(t.name.clone()).or_insert(TypeInfo {
-            name:       t.name.clone(),
-            parent:     t.parent.as_ref().map(|p| p.name().into()),
-            attributes: HashMap::new(),
-            methods:    HashMap::new(),
-            is_builtin: false,
+            name:               t.name.clone(),
+            parent:             t.parent.as_ref().map(|p| p.name().into()),
+            constructor_params: t.type_args.iter()
+                .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
+                .collect(),
+            attributes:         HashMap::new(),
+            methods:            HashMap::new(),
+            is_builtin:         false,
         });
 
         // Registrar en la tabla de símbolos (para `new T(...)`)
@@ -182,7 +185,11 @@ impl TypeChecker {
                     let ret = self.resolve_opt_type(&method.return_type, method.span);
                     let sig = FuncSignature { params, return_type: ret };
 
-                    // Verificar override: si el padre tiene este método, la firma debe coincidir
+                    // ── Override estricto ──────────────────────────────────────
+                    // Si el padre tiene este método, la firma completa debe coincidir:
+                    //   • mismo número de parámetros
+                    //   • mismo tipo en cada parámetro (salvo Unknown = sin anotación)
+                    //   • tipo de retorno compatible (covariante)
                     if let Some(parent_name) = self.types.types.get(&t.name)
                         .and_then(|ti| ti.parent.clone())
                     {
@@ -190,8 +197,36 @@ impl TypeChecker {
                             .and_then(|ti| ti.methods.get(&method.name))
                             .cloned()
                         {
-                            // Verificar que la firma es compatible
+                            let mut mismatch = false;
+
+                            // Aridad
                             if sig.params.len() != parent_sig.params.len() {
+                                mismatch = true;
+                            } else {
+                                // Tipos de parámetros
+                                for ((_, child_ty), (_, parent_ty)) in
+                                    sig.params.iter().zip(parent_sig.params.iter())
+                                {
+                                    if !matches!(child_ty,  HulkType::Unknown)
+                                    && !matches!(parent_ty, HulkType::Unknown)
+                                    && child_ty != parent_ty
+                                    {
+                                        mismatch = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Tipo de retorno: el hijo puede ser más específico (covariante)
+                            if !mismatch
+                            && !matches!(sig.return_type,        HulkType::Unknown)
+                            && !matches!(parent_sig.return_type, HulkType::Unknown)
+                            && !self.types.conforms(&sig.return_type, &parent_sig.return_type)
+                            {
+                                mismatch = true;
+                            }
+
+                            if mismatch {
                                 self.errors.push(SemanticError::OverrideMismatch {
                                     method: method.name.clone(), span: method.span,
                                 });
@@ -267,8 +302,8 @@ impl TypeChecker {
 
         let actual_ret = self.check_expr(&f.body);
 
-        // Verificar retorno solo si fue anotado explícitamente
         if !matches!(expected_ret, HulkType::Unknown) {
+            // Anotación explícita → verificar que el cuerpo conforma
             if !self.types.conforms(&actual_ret, &expected_ret) {
                 self.errors.push(SemanticError::TypeMismatch {
                     expected: expected_ret.name(),
@@ -276,6 +311,10 @@ impl TypeChecker {
                     span:     f.span,
                 });
             }
+        } else if !actual_ret.is_never() && !matches!(actual_ret, HulkType::Unknown) {
+            // INFERENCIA: sin anotación → propagar el tipo inferido del cuerpo
+            // hacia la tabla de símbolos para que los llamadores lo vean
+            self.symbols.update_function_return(&f.name, actual_ret);
         }
 
         self.current_ret_type = prev_ret;
@@ -656,6 +695,61 @@ impl TypeChecker {
 
     fn check_call(&mut self, c: &CallExpr) -> HulkType {
         match c.callee.as_ref() {
+            // ── base() — llamada al constructor del padre ─────────────────────
+            Expr::Base(span) => {
+                match self.current_type.clone() {
+                    None => {
+                        self.errors.push(SemanticError::UndefinedVariable {
+                            name: "base".into(), span: *span,
+                        });
+                        HulkType::Never
+                    }
+                    Some(type_name) => {
+                        let parent = self.types.types.get(&type_name)
+                            .and_then(|t| t.parent.clone());
+                        match parent {
+                            None => {
+                                // Tipo sin padre — base() no tiene sentido
+                                self.errors.push(SemanticError::UndefinedVariable {
+                                    name: "base".into(), span: *span,
+                                });
+                                HulkType::Never
+                            }
+                            Some(parent_name) => {
+                                // Verificar args contra el constructor del padre
+                                let ctor = self.types.types.get(&parent_name)
+                                    .map(|t| t.constructor_params.clone())
+                                    .unwrap_or_default();
+
+                                if c.args.len() != ctor.len() {
+                                    self.errors.push(SemanticError::WrongArgCount {
+                                        name:     format!("base ({})", parent_name),
+                                        expected: ctor.len(),
+                                        found:    c.args.len(),
+                                        span:     c.span,
+                                    });
+                                    for arg in &c.args { self.check_expr(arg); }
+                                } else {
+                                    for (arg, (_, expected_ty)) in c.args.iter().zip(ctor.iter()) {
+                                        let arg_ty = self.check_expr(arg);
+                                        if !self.types.conforms(&arg_ty, expected_ty) {
+                                            self.errors.push(SemanticError::TypeMismatch {
+                                                expected: expected_ty.name(),
+                                                found:    arg_ty.name(),
+                                                span:     c.span,
+                                            });
+                                        }
+                                    }
+                                }
+                                HulkType::UserDefined(parent_name)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Llamada a función / constructor por nombre ────────────────────
+            // ── Llamada a función / constructor por nombre ────────────────────
             Expr::Identifier { name, span } => {
                 let sym = self.symbols.lookup(name).cloned();
                 match sym {
@@ -665,8 +759,17 @@ impl TypeChecker {
                             return_type.clone()
                         }
                         super::symbol_table::SymbolKind::Type => {
-                            // Llamada a constructor sin `new` — Hulk lo permite
-                            for arg in &c.args { self.check_expr(arg); }
+                            // Llamada a constructor sin `new` — verificar aridad también
+                            let ctor = self.types.types.get(name)
+                                .map(|t| t.constructor_params.clone())
+                                .unwrap_or_default();
+
+                            if !ctor.is_empty() || !c.args.is_empty() {
+                                let param_types: Vec<HulkType> = ctor.iter()
+                                    .map(|(_, t)| t.clone())
+                                    .collect();
+                                self.check_call_args(name, &param_types, &c.args, c.span);
+                            }
                             HulkType::UserDefined(name.clone())
                         }
                         _ => {
@@ -682,11 +785,11 @@ impl TypeChecker {
                     }
                 }
             }
+
+            // ── Functor / valor de primera clase ─────────────────────────────
             other => {
-                // Functor / valor de primera clase
                 let callee_ty = self.check_expr(other);
                 for arg in &c.args { self.check_expr(arg); }
-                // No podemos verificar la firma estáticamente → retorna Object
                 if callee_ty.is_never() { HulkType::Never } else { HulkType::Object }
             }
         }
@@ -991,35 +1094,55 @@ impl TypeChecker {
     }
 
     fn check_new(&mut self, n: &NewExpr) -> HulkType {
-        let type_name = n.type_name.name();
+        let type_name = n.type_name.name().to_string();
 
         // Verificar que el tipo existe y no es primitivo
-        match self.types.types.get(type_name) {
+        match self.types.types.get(&type_name) {
             None => {
                 self.errors.push(SemanticError::UndefinedType {
-                    name: type_name.into(), span: n.span,
+                    name: type_name.clone(), span: n.span,
                 });
                 return HulkType::Never;
             }
             Some(info) if info.is_builtin && matches!(
-                type_name, "Number" | "String" | "Boolean"
+                type_name.as_str(), "Number" | "String" | "Boolean"
             ) => {
                 self.errors.push(SemanticError::InheritFromPrimitive {
-                    type_name: type_name.into(), span: n.span,
+                    type_name: type_name.clone(), span: n.span,
                 });
                 return HulkType::Never;
             }
             _ => {}
         }
 
-        // Chequear argumentos del constructor
-        // (En este punto solo chequeamos que se pueden evaluar; la verificación
-        //  de aridad requiere guardar la firma del constructor, extensión futura)
-        for arg in &n.args {
-            self.check_expr(arg);
+        // ── Verificar aridad y tipos del constructor ──────────────────────────
+        let ctor_params = self.types.types.get(&type_name)
+            .map(|t| t.constructor_params.clone())
+            .unwrap_or_default();
+
+        if n.args.len() != ctor_params.len() {
+            self.errors.push(SemanticError::WrongArgCount {
+                name:     type_name.clone(),
+                expected: ctor_params.len(),
+                found:    n.args.len(),
+                span:     n.span,
+            });
+            // Chequear los args de todos modos para no perder otros errores
+            for arg in &n.args { self.check_expr(arg); }
+        } else {
+            for (arg, (_, expected_ty)) in n.args.iter().zip(ctor_params.iter()) {
+                let arg_ty = self.check_expr(arg);
+                if !self.types.conforms(&arg_ty, expected_ty) {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: expected_ty.name(),
+                        found:    arg_ty.name(),
+                        span:     n.span,
+                    });
+                }
+            }
         }
 
-        HulkType::UserDefined(type_name.into())
+        HulkType::UserDefined(type_name)
     }
 
     fn check_vector(&mut self, v: &VectorExpr) -> HulkType {

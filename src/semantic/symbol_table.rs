@@ -94,6 +94,19 @@ impl SymbolTable {
         false
     }
 
+    /// Actualiza el tipo de retorno de una función (para inferencia de retorno).
+    pub fn update_function_return(&mut self, name: &str, return_type: HulkType) -> bool {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(sym) = scope.get_mut(name) {
+                if let SymbolKind::Function { return_type: ref mut rt, .. } = sym.kind {
+                    *rt = return_type;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Búsqueda léxica: del scope más interno al más externo.
     pub fn lookup(&self, name: &str) -> Option<&Symbol> {
         for scope in self.scopes.iter().rev() {

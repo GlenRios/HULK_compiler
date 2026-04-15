@@ -59,11 +59,13 @@ pub struct FuncSignature {
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug, Clone)]
 pub struct TypeInfo {
-    pub name:       String,
-    pub parent:     Option<String>,
-    pub attributes: HashMap<String, HulkType>,
-    pub methods:    HashMap<String, FuncSignature>,
-    pub is_builtin: bool,
+    pub name:               String,
+    pub parent:             Option<String>,
+    /// Parámetros del constructor en orden: `type T(a: Number, b: String)` → [(a,Number),(b,String)]
+    pub constructor_params: Vec<(String, HulkType)>,
+    pub attributes:         HashMap<String, HulkType>,
+    pub methods:            HashMap<String, FuncSignature>,
+    pub is_builtin:         bool,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -286,11 +288,12 @@ impl TypeHierarchy {
 
         for (name, parent) in builtin_types {
             self.types.insert(name.into(), TypeInfo {
-                name:       name.into(),
-                parent:     parent.map(|s| s.into()),
-                attributes: HashMap::new(),
-                methods:    self.builtin_methods_for(name),
-                is_builtin: true,
+                name:               name.into(),
+                parent:             parent.map(|s| s.into()),
+                constructor_params: vec![],   // built-ins no tienen constructor declarado
+                attributes:         HashMap::new(),
+                methods:            self.builtin_methods_for(name),
+                is_builtin:         true,
             });
         }
 
