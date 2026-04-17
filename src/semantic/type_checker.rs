@@ -151,13 +151,16 @@ impl TypeChecker {
             }
         }
 
-        // Registrar en la jerarquía
+        // ⚠️ Primero calcular params SIN borrow mutable activo
+        let constructor_params: Vec<(String, HulkType)> = t.type_args.iter()
+            .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
+            .collect();
+
+        // Luego hacer el insert
         self.types.types.entry(t.name.clone()).or_insert(TypeInfo {
             name:               t.name.clone(),
             parent:             t.parent.as_ref().map(|p| p.name().into()),
-            constructor_params: t.type_args.iter()
-                .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
-                .collect(),
+            constructor_params,
             attributes:         HashMap::new(),
             methods:            HashMap::new(),
             is_builtin:         false,
@@ -855,13 +858,13 @@ impl TypeChecker {
         let obj_ty = self.check_expr(&m.object);
         if obj_ty.is_never() { return HulkType::Never; }
 
-        let type_name = match &obj_ty {
-            HulkType::UserDefined(n) => n.clone(),
-            HulkType::Number         => "Number".into(),
-            HulkType::StringT        => "String".into(),
-            HulkType::Boolean        => "Boolean".into(),
+        let (type_name, is_protocol) = match &obj_ty {
+            HulkType::UserDefined(n) => (n.clone(), false),
+            HulkType::Protocol(p)    => (p.clone(), true),
+            HulkType::Number         => ("Number".into(), false),
+            HulkType::StringT        => ("String".into(), false),
+            HulkType::Boolean        => ("Boolean".into(), false),
             HulkType::Object         => {
-                // Acceso dinámico — no podemos verificar en tiempo de compilación
                 for arg in &m.args { self.check_expr(arg); }
                 return HulkType::Object;
             }
@@ -875,8 +878,12 @@ impl TypeChecker {
             }
         };
 
-        // Buscar el método subiendo la cadena de herencia
-        let sig = self.lookup_method(&type_name, &m.method);
+        let sig = if is_protocol {
+            self.lookup_method_in_protocol(&type_name, &m.method)
+        } else {
+            self.lookup_method(&type_name, &m.method)
+        };
+
         match sig {
             Some(sig) => {
                 let param_types: Vec<HulkType> = sig.params.iter().map(|(_, t)| t.clone()).collect();
@@ -885,9 +892,9 @@ impl TypeChecker {
             }
             None => {
                 self.errors.push(SemanticError::MethodNotFound {
-                    type_name,
+                    type_name: if is_protocol { format!("protocol {}", type_name) } else { type_name },
                     method: m.method.clone(),
-                    span:   m.span,
+                    span: m.span,
                 });
                 HulkType::Never
             }
@@ -905,6 +912,24 @@ impl TypeChecker {
                 match &info.parent {
                     Some(parent) => current = parent.clone(),
                     None         => return None,
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+
+    /// Busca un método en la jerarquía de protocolos (incluyendo `extends`).
+    fn lookup_method_in_protocol(&self, proto_name: &str, method: &str) -> Option<FuncSignature> {
+        let mut current = proto_name.to_string();
+        loop {
+            if let Some(proto) = self.types.protocols.get(&current) {
+                if let Some(sig) = proto.methods.get(method) {
+                    return Some(sig.clone());
+                }
+                match &proto.extends {
+                    Some(parent) => current = parent.clone(),
+                    None => return None,
                 }
             } else {
                 return None;
