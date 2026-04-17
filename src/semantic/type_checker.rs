@@ -140,34 +140,27 @@ impl TypeChecker {
             let pname = parent.name();
             if matches!(pname, "Number" | "String" | "Boolean") {
                 self.errors.push(SemanticError::InheritFromPrimitive {
-                    type_name: t.name.clone(),
-                    span: t.span,
+                    type_name: t.name.clone(), span: t.span,
                 });
             }
             // Verificar que el padre existe
             if self.types.types.get(pname).is_none() {
                 self.errors.push(SemanticError::UndefinedType {
-                    name: pname.into(),
-                    span: parent.span(),
+                    name: pname.into(), span: parent.span(),
                 });
             }
         }
 
-        // Resolver primero los parámetros del constructor, antes de mutar la jerarquía
-        let constructor_params: Vec<(String, HulkType)> = t
-            .type_args
-            .iter()
-            .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
-            .collect();
-
         // Registrar en la jerarquía
         self.types.types.entry(t.name.clone()).or_insert(TypeInfo {
-            name: t.name.clone(),
-            parent: t.parent.as_ref().map(|p| p.name().into()),
-            constructor_params,
-            attributes: HashMap::new(),
-            methods: HashMap::new(),
-            is_builtin: false,
+            name:               t.name.clone(),
+            parent:             t.parent.as_ref().map(|p| p.name().into()),
+            constructor_params: t.type_args.iter()
+                .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
+                .collect(),
+            attributes:         HashMap::new(),
+            methods:            HashMap::new(),
+            is_builtin:         false,
         });
 
         // Registrar en la tabla de símbolos (para `new T(...)`)
@@ -649,11 +642,7 @@ impl TypeChecker {
                 }
                 AssignOp::Assign => {
                     if !self.types.conforms(&value_ty, &target_ty) {
-                        self.errors.push(SemanticError::TypeMismatch {
-                            expected: target_ty.name(),
-                            found:    value_ty.name(),
-                            span:     a.span,
-                        });
+                        self.emit_type_or_protocol_error(&value_ty, &target_ty, a.span);
                     }
                 }
             }
@@ -816,18 +805,48 @@ impl TypeChecker {
                 found:    args.len(),
                 span,
             });
-            // Chequear los args de todos modos para encontrar más errores
             for arg in args { self.check_expr(arg); }
         } else {
             for (arg, expected_ty) in args.iter().zip(params.iter()) {
                 let arg_ty = self.check_expr(arg);
                 if !self.types.conforms(&arg_ty, expected_ty) {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: expected_ty.name(),
-                        found:    arg_ty.name(),
-                        span,
-                    });
+                    // Error más específico cuando el parámetro es un protocolo
+                    self.emit_type_or_protocol_error(&arg_ty, expected_ty, span);
                 }
+            }
+        }
+    }
+
+    /// Emite `ProtocolNotConformed` cuando el tipo esperado es un protocolo,
+    /// o `TypeMismatch` en cualquier otro caso.
+    /// En ambos casos solo emite si los tipos no conforman.
+    fn emit_type_or_protocol_error(&mut self, found_ty: &HulkType, expected_ty: &HulkType, span: Span) {
+        match expected_ty {
+            HulkType::Protocol(proto_name) => {
+                // Obtener el nombre concreto del tipo para el mensaje
+                let type_name = match found_ty {
+                    HulkType::UserDefined(n) => n.clone(),
+                    HulkType::Number         => "Number".into(),
+                    HulkType::StringT        => "String".into(),
+                    HulkType::Boolean        => "Boolean".into(),
+                    _                        => found_ty.name(),
+                };
+                let missing = self.types
+                    .first_protocol_violation(&type_name, proto_name)
+                    .unwrap_or_else(|| "<método desconocido>".into());
+                self.errors.push(SemanticError::ProtocolNotConformed {
+                    type_name,
+                    protocol: proto_name.clone(),
+                    missing,
+                    span,
+                });
+            }
+            _ => {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: expected_ty.name(),
+                    found:    found_ty.name(),
+                    span,
+                });
             }
         }
     }
@@ -983,11 +1002,7 @@ impl TypeChecker {
             let final_ty = if let Some(ann) = &binding.type_ann {
                 let ann_ty = self.resolve_type_name(ann);
                 if !self.types.conforms(&val_ty, &ann_ty) {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: ann_ty.name(),
-                        found:    val_ty.name(),
-                        span:     binding.span,
-                    });
+                    self.emit_type_or_protocol_error(&val_ty, &ann_ty, binding.span);
                 }
                 ann_ty
             } else {

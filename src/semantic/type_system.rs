@@ -157,27 +157,41 @@ impl TypeHierarchy {
         ancestor == "Object"
     }
 
-    /// Verificación estructural de protocolo
+    /// Verificación estructural de protocolo.
+    ///
+    /// Reglas según la spec de Hulk:
+    ///  • Implícita/estructural — no hay declaración explícita
+    ///  • Métodos heredados cuentan (se busca subiendo la jerarquía del tipo)
+    ///  • Si el padre del tipo ya conforma, el hijo conforma automáticamente
+    ///  • Covarianza en retorno: el método puede retornar un subtipo
+    ///  • Contravarianza en parámetros: el método puede aceptar un supertipo
     pub fn conforms_protocol(&self, type_name: &str, protocol: &str) -> bool {
+        // Si el padre ya conforma, el hijo también — verificar primero
+        if let Some(info) = self.types.get(type_name) {
+            if let Some(parent) = &info.parent {
+                if self.conforms_protocol(parent, protocol) {
+                    return true;
+                }
+            }
+        }
+
         let proto = match self.protocols.get(protocol) {
             Some(p) => p.clone(),
             None    => return false,
         };
-        let tinfo = match self.types.get(type_name) {
-            Some(t) => t.clone(),
-            None    => return false,
-        };
 
         for (method_name, proto_sig) in &proto.methods {
-            match tinfo.methods.get(method_name) {
+            // Buscar el método subiendo la cadena de herencia del tipo
+            match self.lookup_method_for_protocol(type_name, method_name) {
                 None           => return false,
                 Some(type_sig) => {
-                    if !self.signatures_compatible(type_sig, proto_sig) {
+                    if !self.signatures_protocol_compatible(&type_sig, proto_sig) {
                         return false;
                     }
                 }
             }
         }
+
         // Verificar protocolo padre recursivamente
         if let Some(parent_proto) = proto.extends.clone() {
             return self.conforms_protocol(type_name, &parent_proto);
@@ -185,19 +199,73 @@ impl TypeHierarchy {
         true
     }
 
-    /// Busca el método que falta para un protocolo (para mejores mensajes de error)
-    pub fn missing_protocol_method(&self, type_name: &str, protocol: &str) -> Option<String> {
-        let proto = self.protocols.get(protocol)?;
-        let tinfo = self.types.get(type_name)?;
-        for (method_name, _) in &proto.methods {
-            if !tinfo.methods.contains_key(method_name) {
-                return Some(method_name.clone());
+    /// Busca un método subiendo la jerarquía del tipo (los métodos heredados cuentan).
+    fn lookup_method_for_protocol(&self, type_name: &str, method: &str) -> Option<FuncSignature> {
+        let mut current = type_name.to_string();
+        loop {
+            if let Some(info) = self.types.get(&current) {
+                if let Some(sig) = info.methods.get(method) {
+                    return Some(sig.clone());
+                }
+                match &info.parent {
+                    Some(parent) => current = parent.clone(),
+                    None         => return None,
+                }
+            } else {
+                return None;
             }
+        }
+    }
+
+    /// Compatibilidad de firma con varianza correcta:
+    ///  • Retorno covariante:      type_sig.return conforma con proto_sig.return
+    ///  • Parámetros contravariantes: proto_sig.param conforma con type_sig.param
+    fn signatures_protocol_compatible(&self, type_sig: &FuncSignature, proto_sig: &FuncSignature) -> bool {
+        if type_sig.params.len() != proto_sig.params.len() {
+            return false;
+        }
+        // Retorno covariante
+        let ret_ok = matches!(type_sig.return_type,  HulkType::Unknown)
+                  || matches!(proto_sig.return_type, HulkType::Unknown)
+                  || self.conforms(&type_sig.return_type, &proto_sig.return_type);
+        if !ret_ok { return false; }
+
+        // Parámetros contravariantes
+        for ((_, type_param), (_, proto_param)) in
+            type_sig.params.iter().zip(proto_sig.params.iter())
+        {
+            let param_ok = matches!(type_param,  HulkType::Unknown)
+                        || matches!(proto_param, HulkType::Unknown)
+                        || self.conforms(proto_param, type_param); // contravariante: proto ≤ type
+            if !param_ok { return false; }
+        }
+        true
+    }
+
+    /// Retorna el primer método del protocolo que el tipo NO cumple,
+    /// con una descripción del problema. Útil para mensajes de error detallados.
+    pub fn first_protocol_violation(&self, type_name: &str, protocol: &str) -> Option<String> {
+        let proto = self.protocols.get(protocol)?;
+
+        for (method_name, proto_sig) in &proto.methods {
+            match self.lookup_method_for_protocol(type_name, method_name) {
+                None => return Some(method_name.clone()),
+                Some(type_sig) => {
+                    if !self.signatures_protocol_compatible(&type_sig, proto_sig) {
+                        return Some(format!("{} (firma incompatible)", method_name));
+                    }
+                }
+            }
+        }
+        // Revisar protocolo padre
+        if let Some(parent_proto) = &proto.extends {
+            return self.first_protocol_violation(type_name, parent_proto);
         }
         None
     }
 
     fn signatures_compatible(&self, a: &FuncSignature, b: &FuncSignature) -> bool {
+        // Compatibilidad exacta — usada para override de métodos (no para protocolos)
         a.params.len() == b.params.len()
             && self.conforms(&a.return_type, &b.return_type)
             && a.params.iter().zip(&b.params)
