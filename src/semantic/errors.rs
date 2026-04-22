@@ -67,45 +67,45 @@ impl fmt::Display for SemanticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UndefinedVariable { name, span } =>
-                write!(f, "[{}] Variable '{}' no definida", span, name),
+                write!(f, "[{}] Variable '{}' is undefined", span, name),
             Self::UndefinedFunction { name, span } =>
-                write!(f, "[{}] Función '{}' no definida", span, name),
+                write!(f, "[{}] Function '{}' is undefined", span, name),
             Self::UndefinedType { name, span } =>
-                write!(f, "[{}] Tipo '{}' no definido", span, name),
+                write!(f, "[{}] Type '{}' is undefined", span, name),
             Self::Redefinition { name, span } =>
-                write!(f, "[{}] '{}' ya está definido en este scope", span, name),
+                write!(f, "[{}] '{}' is already defined in this scope", span, name),
             Self::TypeMismatch { expected, found, span } =>
-                write!(f, "[{}] Se esperaba tipo '{}', se encontró '{}'", span, expected, found),
+                write!(f, "[{}] Expected type '{}', found '{}'", span, expected, found),
             Self::CannotInferType { name, span } =>
-                write!(f, "[{}] No se puede inferir el tipo de '{}'", span, name),
+                write!(f, "[{}] Cannot infer the type of '{}'", span, name),
             Self::InheritFromPrimitive { type_name, span } =>
-                write!(f, "[{}] '{}' no puede heredar de un tipo primitivo", span, type_name),
+                write!(f, "[{}] '{}' cannot inherit from a primitive type", span, type_name),
             Self::CircularInheritance { type_name, span } =>
-                write!(f, "[{}] Herencia circular detectada en '{}'", span, type_name),
+                write!(f, "[{}] Circular inheritance detected in '{}'", span, type_name),
             Self::WrongArgCount { name, expected, found, span } =>
-                write!(f, "[{}] '{}' espera {} argumento(s), se dieron {}", span, name, expected, found),
+                write!(f, "[{}] '{}' expects {} argument(s), but {} were given", span, name, expected, found),
             Self::NotCallable { span } =>
-                write!(f, "[{}] La expresión no es invocable", span),
+                write!(f, "[{}] Expression is not callable", span),
             Self::MethodNotFound { type_name, method, span } =>
-                write!(f, "[{}] El tipo '{}' no tiene método '{}'", span, type_name, method),
+                write!(f, "[{}] Type '{}' has no method '{}'", span, type_name, method),
             Self::AttributeNotFound { type_name, attr, span } =>
-                write!(f, "[{}] El tipo '{}' no tiene atributo '{}'", span, type_name, attr),
+                write!(f, "[{}] Type '{}' has no attribute '{}'", span, type_name, attr),
             Self::SelfAssignment { span } =>
-                write!(f, "[{}] No se puede asignar a 'self'", span),
+                write!(f, "[{}] Cannot assign to 'self'", span),
             Self::SelfInInitializer { span } =>
-                write!(f, "[{}] 'self' no está disponible en la inicialización de atributos", span),
+                write!(f, "[{}] 'self' is not available during attribute initialization", span),
             Self::InvalidLValue { span } =>
-                write!(f, "[{}] El lado izquierdo de la asignación no es válido", span),
+                write!(f, "[{}] Left-hand side of assignment is not valid", span),
             Self::ProtocolNotConformed { type_name, protocol, missing, span } =>
-                write!(f, "[{}] '{}' no cumple el protocolo '{}': falta '{}'", span, type_name, protocol, missing),
+                write!(f, "[{}] '{}' does not conform to protocol '{}': missing '{}'", span, type_name, protocol, missing),
             Self::OverrideMismatch { method, span } =>
-                write!(f, "[{}] La firma del método '{}' no coincide con la del padre", span, method),
+                write!(f, "[{}] Method signature for '{}' does not match the parent method", span, method),
             Self::InvalidCast { from, to, span } =>
-                write!(f, "[{}] No se puede hacer cast de '{}' a '{}'", span, from, to),
+                write!(f, "[{}] Cannot cast from '{}' to '{}'", span, from, to),
             Self::InvalidOperandType { op, found, span } =>
-                write!(f, "[{}] Operador '{}' no aplicable a tipo '{}'", span, op, found),
+                write!(f, "[{}] Operator '{}' cannot be applied to type '{}'", span, op, found),
             Self::InvalidBinaryTypes { op, left, right, span } =>
-                write!(f, "[{}] Operador '{}' no aplicable entre '{}' y '{}'", span, op, left, right),
+                write!(f, "[{}] Operator '{}' cannot be applied between '{}' and '{}'", span, op, left, right),
         }
     }
 }
