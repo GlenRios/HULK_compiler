@@ -388,7 +388,8 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                     .map_err(|e| CodegenError::Builder(e.to_string()))?;
 
                 self.builder.position_at_end(then_block);
-                let then_value = self.require_number(self.visit_expr(&if_expr.then_body)?)?;
+                let then_val = self.visit_expr(&if_expr.then_body)?;
+                let then_value = self.require_number(then_val)?;
                 let then_end = self.builder.get_insert_block().ok_or_else(|| {
                     CodegenError::Unsupported("if_then sin bloque actual".to_string())
                 })?;
@@ -399,7 +400,8 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                 }
 
                 self.builder.position_at_end(else_block);
-                let else_value = self.require_number(self.visit_expr(&if_expr.else_body)?)?;
+                let else_val = self.visit_expr(&if_expr.else_body)?;
+                let else_value = self.require_number(else_val)?;
                 let else_end = self.builder.get_insert_block().ok_or_else(|| {
                     CodegenError::Unsupported("if_else sin bloque actual".to_string())
                 })?;

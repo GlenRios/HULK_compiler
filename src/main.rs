@@ -4,6 +4,7 @@
 mod codegen;
 mod lexer;
 mod parser;
+mod semantic;
 fn main() {
 
 }
