@@ -6,6 +6,7 @@ use super::visitor::{DeclVisitor, ExprVisitor, ProgramVisitor};
 
 impl<'ctx> ProgramVisitor<'ctx> for CodegenContext<'ctx> {
     fn visit_program(&mut self, program: &Program) -> CodegenResult<()> {
+        self.register_runtime();
         self.predeclare_functions(&program.declarations);
 
         for decl in &program.declarations {

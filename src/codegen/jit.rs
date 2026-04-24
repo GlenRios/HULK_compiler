@@ -6,6 +6,10 @@ use crate::parser::ast::Program;
 
 use super::context::CodegenContext;
 use super::error::{CodegenError, CodegenResult};
+use super::runtime::{
+    hulk_print, hulk_rand, hulk_str_from_number,
+    hulk_str_concat, hulk_str_concat_space, hulk_str_size,
+};
 use super::visitor::ProgramVisitor;
 
 pub fn execute_program_jit(program: &Program) -> CodegenResult<f64> {
@@ -21,15 +25,30 @@ pub fn execute_program_jit(program: &Program) -> CodegenResult<f64> {
         .create_jit_execution_engine(OptimizationLevel::None)
         .map_err(|e| CodegenError::Jit(e.to_string()))?;
 
+    // Registrar las funciones hulk_* del runtime Rust con el JIT.
+    // El JIT resuelve funciones de libm/libc automáticamente, pero las
+    // funciones definidas en este binario necesitan mapeo explícito.
+    let mappings: &[(&str, usize)] = &[
+        ("hulk_print",            hulk_print            as usize),
+        ("hulk_rand",             hulk_rand             as usize),
+        ("hulk_str_from_number",  hulk_str_from_number  as usize),
+        ("hulk_str_concat",       hulk_str_concat       as usize),
+        ("hulk_str_concat_space", hulk_str_concat_space as usize),
+        ("hulk_str_size",         hulk_str_size         as usize),
+    ];
+    for (name, addr) in mappings {
+        if let Some(fn_val) = cg.module.get_function(name) {
+            ee.add_global_mapping(&fn_val, *addr);
+        }
+    }
+
     let fn_name = "__hulk_entry";
 
-    // Safety: el tipo coincide con la firma generada en lower_program.
     let entry = unsafe {
         ee.get_function::<unsafe extern "C" fn() -> f64>(fn_name)
             .map_err(|e| CodegenError::Jit(e.to_string()))?
     };
 
-    // Safety: el puntero recuperado tiene la firma correcta.
     let result = unsafe { entry.call() };
     Ok(result)
 }
