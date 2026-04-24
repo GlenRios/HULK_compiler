@@ -1,10 +1,19 @@
 use std::collections::HashMap;
-
 use inkwell::values::PointerValue;
+use crate::semantic::HulkType;
+
+/// Slot de variable en el stack frame LLVM.
+/// Lleva el puntero al alloca + el HulkType del valor almacenado.
+/// El HulkType determina qué tipo LLVM usar en build_load/build_store.
+#[derive(Debug, Clone)]
+pub struct VarSlot<'ctx> {
+    pub ptr:     PointerValue<'ctx>,
+    pub hulk_ty: HulkType,
+}
 
 #[derive(Debug, Default)]
 pub struct SymbolTable<'ctx> {
-    scopes: Vec<HashMap<String, PointerValue<'ctx>>>,
+    scopes: Vec<HashMap<String, VarSlot<'ctx>>>,
 }
 
 impl<'ctx> SymbolTable<'ctx> {
@@ -18,20 +27,21 @@ impl<'ctx> SymbolTable<'ctx> {
 
     pub fn pop_scope(&mut self) {
         if self.scopes.len() > 1 {
-            let _ = self.scopes.pop();
+            self.scopes.pop();
         }
     }
 
-    pub fn insert(&mut self, name: String, ptr: PointerValue<'ctx>) {
-        if let Some(last) = self.scopes.last_mut() {
-            last.insert(name, ptr);
+    pub fn insert(&mut self, name: String, slot: VarSlot<'ctx>) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, slot);
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<PointerValue<'ctx>> {
+    /// Búsqueda léxica: del scope más interno al más externo.
+    pub fn get(&self, name: &str) -> Option<&VarSlot<'ctx>> {
         for scope in self.scopes.iter().rev() {
-            if let Some(ptr) = scope.get(name) {
-                return Some(*ptr);
+            if let Some(slot) = scope.get(name) {
+                return Some(slot);
             }
         }
         None

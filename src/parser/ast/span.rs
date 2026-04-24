@@ -3,7 +3,7 @@ use std::fmt;
 /// Posición de un nodo en el código fuente.
 /// Todos los nodos del AST llevan un Span para
 /// poder reportar errores con línea y columna exactas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub struct Span {
     pub line:   usize,
     pub column: usize,

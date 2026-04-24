@@ -35,11 +35,16 @@ impl<'ctx> CodegenContext<'ctx> {
         for (idx, param_decl) in func_decl.params.iter().enumerate() {
             if let Some(param) = function.get_nth_param(idx as u32) {
                 let param_val = param.into_float_value();
-                let alloca = self.create_entry_alloca(function, &param_decl.name)?;
+                // Parámetros de función siguen siendo f64 por ahora (Fase 6 los generaliza)
+                let slot = self.create_entry_alloca_for(
+                    function,
+                    &param_decl.name,
+                    &crate::semantic::HulkType::Number,
+                )?;
                 self.builder
-                    .build_store(alloca, param_val)
+                    .build_store(slot.ptr, param_val)
                     .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                self.symbols.insert(param_decl.name.clone(), alloca);
+                self.symbols.insert(param_decl.name.clone(), slot);
             }
         }
 
