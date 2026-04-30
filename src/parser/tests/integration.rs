@@ -55,8 +55,8 @@ fn entry(program: &Program) -> &Expr {
 
 /// Extrae el nombre y args de una llamada. Panic si no es Call.
 fn as_call<'a>(expr: &'a Expr) -> (&'a Expr, &'a [Expr]) {
-    match expr {
-        Expr::Call(c) => (&c.callee, &c.args),
+    match &expr.kind {
+        ExprKind::Call(c) => (&c.callee, &c.args),
         other => panic!(
             "esperaba Call, encontrado {:?}",
             std::mem::discriminant(other)
@@ -66,8 +66,8 @@ fn as_call<'a>(expr: &'a Expr) -> (&'a Expr, &'a [Expr]) {
 
 /// Extrae op, left, right de una expresión binaria.
 fn as_binary(expr: &Expr) -> (&BinaryOp, &Expr, &Expr) {
-    match expr {
-        Expr::Binary(b) => (&b.op, &b.left, &b.right),
+    match &expr.kind {
+        ExprKind::Binary(b) => (&b.op, &b.left, &b.right),
         other => panic!(
             "esperaba Binary, encontrado {:?}",
             std::mem::discriminant(other)
@@ -77,8 +77,8 @@ fn as_binary(expr: &Expr) -> (&BinaryOp, &Expr, &Expr) {
 
 /// Extrae el nombre de un Identifier.
 fn as_ident(expr: &Expr) -> &str {
-    match expr {
-        Expr::Identifier { name, .. } => name,
+    match &expr.kind {
+        ExprKind::Identifier { name } => name,
         other => panic!(
             "esperaba Identifier, encontrado {:?}",
             std::mem::discriminant(other)
@@ -88,8 +88,8 @@ fn as_ident(expr: &Expr) -> &str {
 
 /// Extrae el valor string de un Number literal.
 fn as_number(expr: &Expr) -> &str {
-    match expr {
-        Expr::Literal(Literal::Number { value, .. }) => value,
+    match &expr.kind {
+        ExprKind::Literal(Literal::Number { value, .. }) => value,
         other => panic!(
             "esperaba Number, encontrado {:?}",
             std::mem::discriminant(other)
@@ -99,8 +99,8 @@ fn as_number(expr: &Expr) -> &str {
 
 /// Extrae el valor string de un String literal.
 fn as_string_lit(expr: &Expr) -> &str {
-    match expr {
-        Expr::Literal(Literal::String { value, .. }) => value,
+    match &expr.kind {
+        ExprKind::Literal(Literal::String { value, .. }) => value,
         other => panic!(
             "esperaba String literal, encontrado {:?}",
             std::mem::discriminant(other)
@@ -110,8 +110,8 @@ fn as_string_lit(expr: &Expr) -> &str {
 
 /// Extrae el bool de un Bool literal.
 fn as_bool(expr: &Expr) -> bool {
-    match expr {
-        Expr::Literal(Literal::Bool { value, .. }) => *value,
+    match &expr.kind {
+        ExprKind::Literal(Literal::Bool { value, .. }) => *value,
         other => panic!(
             "esperaba Bool, encontrado {:?}",
             std::mem::discriminant(other)
@@ -121,8 +121,8 @@ fn as_bool(expr: &Expr) -> bool {
 
 /// Extrae bindings y body de un LetExpr.
 fn as_let(expr: &Expr) -> (&[LetBinding], &Expr) {
-    match expr {
-        Expr::Let(l) => (&l.bindings, &l.body),
+    match &expr.kind {
+        ExprKind::Let(l) => (&l.bindings, &l.body),
         other => panic!(
             "esperaba Let, encontrado {:?}",
             std::mem::discriminant(other)
@@ -132,8 +132,8 @@ fn as_let(expr: &Expr) -> (&[LetBinding], &Expr) {
 
 /// Extrae condition, then, elifs, else de un IfExpr.
 fn as_if(expr: &Expr) -> (&Expr, &Expr, &[ElifBranch], &Expr) {
-    match expr {
-        Expr::If(i) => (&i.condition, &i.then_body, &i.elif_chain, &i.else_body),
+    match &expr.kind {
+        ExprKind::If(i) => (&i.condition, &i.then_body, &i.elif_chain, &i.else_body),
         other => panic!(
             "esperaba If, encontrado {:?}",
             std::mem::discriminant(other)
@@ -143,8 +143,8 @@ fn as_if(expr: &Expr) -> (&Expr, &Expr, &[ElifBranch], &Expr) {
 
 /// Extrae condition y body de un WhileExpr.
 fn as_while(expr: &Expr) -> (&Expr, &Expr) {
-    match expr {
-        Expr::While(w) => (&w.condition, &w.body),
+    match &expr.kind {
+        ExprKind::While(w) => (&w.condition, &w.body),
         other => panic!(
             "esperaba While, encontrado {:?}",
             std::mem::discriminant(other)
@@ -154,8 +154,8 @@ fn as_while(expr: &Expr) -> (&Expr, &Expr) {
 
 /// Extrae var, iterable, body de un ForExpr.
 fn as_for(expr: &Expr) -> (&str, &Expr, &Expr) {
-    match expr {
-        Expr::For(f) => (&f.var, &f.iterable, &f.body),
+    match &expr.kind {
+        ExprKind::For(f) => (&f.var, &f.iterable, &f.body),
         other => panic!(
             "esperaba For, encontrado {:?}",
             std::mem::discriminant(other)
@@ -165,8 +165,8 @@ fn as_for(expr: &Expr) -> (&str, &Expr, &Expr) {
 
 /// Extrae el body de un BlockExpr.
 fn as_block(expr: &Expr) -> &[Expr] {
-    match expr {
-        Expr::Block(b) => &b.body,
+    match &expr.kind {
+        ExprKind::Block(b) => &b.body,
         other => panic!(
             "esperaba Block, encontrado {:?}",
             std::mem::discriminant(other)
@@ -176,8 +176,8 @@ fn as_block(expr: &Expr) -> &[Expr] {
 
 /// Extrae target, op, value de una AssignExpr.
 fn as_assign(expr: &Expr) -> (&Expr, &AssignOp, &Expr) {
-    match expr {
-        Expr::Assign(a) => (&a.target, &a.op, &a.value),
+    match &expr.kind {
+        ExprKind::Assign(a) => (&a.target, &a.op, &a.value),
         other => panic!(
             "esperaba Assign, encontrado {:?}",
             std::mem::discriminant(other)
@@ -187,8 +187,8 @@ fn as_assign(expr: &Expr) -> (&Expr, &AssignOp, &Expr) {
 
 /// Extrae object y field de un AccessExpr.
 fn as_access<'a>(expr: &'a Expr) -> (&'a Expr, &'a str) {
-    match expr {
-        Expr::Access(a) => (&a.object, &a.field),
+    match &expr.kind {
+        ExprKind::Access(a) => (&a.object, &a.field),
         other => panic!(
             "esperaba Access, encontrado {:?}",
             std::mem::discriminant(other)
@@ -198,8 +198,8 @@ fn as_access<'a>(expr: &'a Expr) -> (&'a Expr, &'a str) {
 
 /// Extrae object, method, args de un MethodCallExpr.
 fn as_method_call<'a>(expr: &'a Expr) -> (&'a Expr, &'a str, &'a [Expr]) {
-    match expr {
-        Expr::MethodCall(m) => (&m.object, &m.method, &m.args),
+    match &expr.kind {
+        ExprKind::MethodCall(m) => (&m.object, &m.method, &m.args),
         other => panic!(
             "esperaba MethodCall, encontrado {:?}",
             std::mem::discriminant(other)
@@ -318,7 +318,7 @@ fn power_right_associative() {
 fn unary_negation() {
     let p = parse("-42;");
     match entry(&p) {
-        Expr::Unary(u) => {
+        ExprKind::Unary(u) => {
             assert_eq!(u.op, UnaryOp::Neg);
             assert_eq!(as_number(&u.operand), "42");
         }
@@ -601,7 +601,7 @@ fn chained_method_calls() {
 fn index_access() {
     let p = parse("v[0];");
     match entry(&p) {
-        Expr::Index(i) => {
+        ExprKind::Index(i) => {
             assert_eq!(as_ident(&i.collection), "v");
             assert_eq!(as_number(&i.index), "0");
         }
@@ -617,7 +617,7 @@ fn index_access() {
 fn new_no_args() {
     let p = parse("new Point();");
     match entry(&p) {
-        Expr::New(n) => {
+        ExprKind::New(n) => {
             assert_eq!(n.type_name.name(), "Point");
             assert!(n.args.is_empty());
         }
@@ -629,7 +629,7 @@ fn new_no_args() {
 fn new_with_args() {
     let p = parse("new Point(3, 4);");
     match entry(&p) {
-        Expr::New(n) => {
+        ExprKind::New(n) => {
             assert_eq!(n.type_name.name(), "Point");
             assert_eq!(n.args.len(), 2);
             assert_eq!(as_number(&n.args[0]), "3");
@@ -647,7 +647,7 @@ fn new_with_args() {
 fn vector_empty() {
     let p = parse("[];");
     match entry(&p) {
-        Expr::Vector(v) => match v.as_ref() {
+        ExprKind::Vector(v) => match v.as_ref() {
             VectorExpr::Explicit { elements, .. } => assert!(elements.is_empty()),
             _ => panic!("esperaba Explicit"),
         },
@@ -659,7 +659,7 @@ fn vector_empty() {
 fn vector_explicit() {
     let p = parse("[1, 2, 3];");
     match entry(&p) {
-        Expr::Vector(v) => match v.as_ref() {
+        ExprKind::Vector(v) => match v.as_ref() {
             VectorExpr::Explicit { elements, .. } => {
                 assert_eq!(elements.len(), 3);
                 assert_eq!(as_number(&elements[0]), "1");
@@ -719,7 +719,7 @@ fn func_recursive() {
     let p = parse("function fib(n) => if (n == 0 | n == 1) 1 else fib(n-1) + fib(n-2); 0;");
     let f = first_func(&p);
     assert_eq!(f.name, "fib");
-    assert!(matches!(f.body.as_ref(), Expr::If(_)));
+    assert!(matches!(f.body.kind, ExprKind::If(_)));
 }
 
 #[test]
@@ -859,7 +859,7 @@ fn program_gcd() {
     let p = parse(src);
     let f = first_func(&p);
     assert_eq!(f.name, "gcd");
-    assert!(matches!(f.body.as_ref(), Expr::While(_)));
+    assert!(matches!(f.body.kind, ExprKind::While(_)));
 }
 
 #[test]
@@ -896,7 +896,7 @@ fn program_type_with_polymorphism() {
     // Entry: let p = new Knight(...) in print(p.name())
     let (bindings, body) = as_let(entry(&p));
     assert_eq!(bindings[0].name, "p");
-    assert!(matches!(bindings[0].value.as_ref(), Expr::New(_)));
+    assert!(matches!(bindings[0].value.kind, ExprKind::New(_)));
     let (callee, args) = as_call(body);
     assert_eq!(as_ident(callee), "print");
     let (obj, method, _) = as_method_call(&args[0]);
@@ -914,7 +914,7 @@ fn program_for_with_range() {
     let (bindings, body) = as_let(entry(&p));
     // binding[0].value es un vector explícito
     match bindings[0].value.as_ref() {
-        Expr::Vector(v) => match v.as_ref() {
+        ExprKind::Vector(v) => match v.as_ref() {
             VectorExpr::Explicit { elements, .. } => assert_eq!(elements.len(), 5),
             _ => panic!("esperaba Explicit"),
         },
