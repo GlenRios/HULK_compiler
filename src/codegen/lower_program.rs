@@ -73,6 +73,30 @@ impl<'ctx> CodegenContext<'ctx> {
             }
         }
 
+        // ── Pase 1b: asignar tags en orden DFS para que is pueda usar range check ──
+        // Construir mapa padre → hijos dentro del conjunto de tipos declarados
+        let mut children: HashMap<String, Vec<String>> = HashMap::new();
+        let mut roots: Vec<String> = vec![];
+        for (name, td) in &ast_map {
+            let parent = td.parent.as_ref().map(|p| p.name().to_string());
+            match parent {
+                Some(p) if ast_map.contains_key(&p) => {
+                    children.entry(p).or_default().push(name.clone());
+                }
+                _ => roots.push(name.clone()),
+            }
+        }
+        // Ordenar para asignación determinista de tags
+        roots.sort();
+        for kids in children.values_mut() { kids.sort(); }
+
+        // DFS pre-order: cada tipo recibe tag antes que sus hijos → rango contiguo
+        let mut tag_counter = 1u32;
+        let mut tag_ranges: HashMap<String, (u32, u32)> = HashMap::new();
+        for root in &roots {
+            dfs_assign_tags(root, &children, &mut tag_counter, &mut tag_ranges);
+        }
+
         // ── Pase 2: rellenar cuerpos y registrar layouts ──────────────────────
         for decl in decls {
             let td = match decl { Decl::Type(t) => t, _ => continue };
@@ -104,7 +128,14 @@ impl<'ctx> CodegenContext<'ctx> {
                 &format!("vtable_{}", td.name),
             );
 
-            let tag = self.type_registry.alloc_tag();
+            // Tags DFS calculados en Pase 1b
+            let (type_tag, max_tag) = tag_ranges
+                .get(&td.name)
+                .copied()
+                .unwrap_or_else(|| {
+                    let t = self.type_registry.alloc_tag();
+                    (t, t)
+                });
 
             self.type_registry.layouts.insert(td.name.clone(), TypeLayout {
                 struct_type:   struct_map[&td.name],
@@ -112,7 +143,8 @@ impl<'ctx> CodegenContext<'ctx> {
                 vtable_global,
                 field_names,
                 method_names,
-                type_tag:      tag,
+                type_tag,
+                max_tag,
                 ctor_fn:       None,
                 parent:        td.parent.as_ref().map(|p| p.name().to_string()),
             });
@@ -143,6 +175,24 @@ pub fn collect_field_names(
         }
     }
     names
+}
+
+/// Asigna tags en orden DFS pre-order para que todos los subtipos de un tipo
+/// queden en el rango contiguo [type_tag, max_tag]. Permite range check en `is`.
+fn dfs_assign_tags(
+    name:     &str,
+    children: &HashMap<String, Vec<String>>,
+    counter:  &mut u32,
+    ranges:   &mut HashMap<String, (u32, u32)>,
+) {
+    let min_tag = *counter;
+    *counter += 1;
+    if let Some(kids) = children.get(name) {
+        for kid in kids {
+            dfs_assign_tags(kid, children, counter, ranges);
+        }
+    }
+    ranges.insert(name.to_string(), (min_tag, *counter - 1));
 }
 
 /// Slots de vtable: padre primero, nuevos métodos al final.

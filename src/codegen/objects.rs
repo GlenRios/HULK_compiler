@@ -8,7 +8,8 @@ pub struct TypeLayout<'ctx> {
     pub vtable_global: GlobalValue<'ctx>,
     pub field_names:   Vec<String>,
     pub method_names:  Vec<String>,
-    pub type_tag:      u32,
+    pub type_tag:      u32,  // tag mínimo del rango DFS — identifica el tipo
+    pub max_tag:       u32,  // tag máximo del rango DFS — cubre todos los subtipos
     pub ctor_fn:       Option<FunctionValue<'ctx>>,
     pub parent:        Option<String>,
 }
