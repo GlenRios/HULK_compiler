@@ -1,16 +1,17 @@
 use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use inkwell::module::Linkage;
+use inkwell::types::BasicType;
 use inkwell::values::{BasicMetadataValueEnum, BasicValue};
 
 use crate::parser::ast::{
-    AssignOp, BinaryOp, Expr, Literal, PostfixOp, UnaryOp,
+    AssignOp, BinaryOp, Expr, ExprKind, Literal, PostfixOp, UnaryOp,
 };
 use crate::semantic::HulkType;
 
 use super::context::CodegenContext;
 use super::error::{CodegenError, CodegenResult};
-use super::symbols::VarSlot;
+use super::symbols::Place;
 use super::value::CgValue;
 use super::visitor::ExprVisitor;
 
@@ -25,23 +26,31 @@ impl<'ctx> CodegenContext<'ctx> {
         self.require_bool(value)
     }
 
-    /// Devuelve el VarSlot de un lvalue válido (Identifier por ahora).
-    fn eval_lvalue_slot<'a>(&'a self, expr: &Expr) -> CodegenResult<&'a VarSlot<'ctx>> {
-        match expr {
-            Expr::Identifier { name, .. } => self
+    /// Devuelve el Place de un lvalue variable (Identifier).
+    fn eval_lvalue_slot<'a>(&'a self, expr: &Expr) -> CodegenResult<&'a Place<'ctx>> {
+        match &expr.kind {
+            ExprKind::Identifier { name } => self
                 .symbols
                 .get(name)
                 .ok_or_else(|| CodegenError::UnknownVariable(name.clone())),
             _ => Err(CodegenError::InvalidLValue),
         }
     }
+
+    /// Devuelve el HulkType de una expresión consultando el side table del TypeChecker.
+    /// Reemplaza infer_expr_type — siempre correcto, nunca Unknown para expr bien tipadas.
+    fn get_expr_type(&self, expr: &Expr) -> HulkType {
+        self.expr_types.get(&expr.id)
+            .cloned()
+            .expect("expression should be annotated by TypeChecker")
+    }
 }
 
 impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
     fn visit_expr(&mut self, expr: &Expr) -> CodegenResult<CgValue<'ctx>> {
-        match expr {
+        match &expr.kind {
             // ── Literales ─────────────────────────────────────────────────────
-            Expr::Literal(lit) => match lit {
+            ExprKind::Literal(lit) => match lit {
                 Literal::Number { value, .. } => {
                     let parsed: f64 = value
                         .parse()
@@ -69,17 +78,17 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             },
 
             // ── Identificador ─────────────────────────────────────────────────
-            Expr::Identifier { name, .. } => {
+            ExprKind::Identifier { name } => {
                 let slot = self
                     .symbols
                     .get(name)
                     .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?
                     .clone();
-                self.load_slot(&slot, &format!("load_{name}"))
+                self.load_place(&slot, &format!("load_{name}"))
             }
 
             // ── Binarias ──────────────────────────────────────────────────────
-            Expr::Binary(bin) => {
+            ExprKind::Binary(bin) => {
                 match &bin.op {
                     BinaryOp::Add => {
                         let l = self.eval_number(&bin.left)?;
@@ -231,7 +240,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── Unarias ───────────────────────────────────────────────────────
-            Expr::Unary(unary) => match unary.op {
+            ExprKind::Unary(unary) => match unary.op {
                 UnaryOp::Neg => {
                     let value = self.eval_number(&unary.operand)?;
                     Ok(CgValue::Number(
@@ -249,7 +258,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             },
 
             // ── Postfix (++/--) — solo Number ─────────────────────────────────
-            Expr::Postfix(postfix) => {
+            ExprKind::Postfix(postfix) => {
                 let slot = self.eval_lvalue_slot(&postfix.operand)?.clone();
                 // El typechecker garantiza que postfix solo aplica a Number
                 let old = self.builder
@@ -271,83 +280,155 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── Asignación ────────────────────────────────────────────────────
-            Expr::Assign(assign) => {
-                let slot = self.eval_lvalue_slot(&assign.target)?.clone();
+            ExprKind::Assign(assign) => {
+                // Resolver el lvalue: variable local o campo de objeto
+                let place = match &assign.target.kind {
+                    ExprKind::Identifier { .. } => {
+                        self.eval_lvalue_slot(&assign.target)?.clone()
+                    }
+                    ExprKind::Access(ae) => {
+                        let CgValue::Object(obj_ptr) = self.visit_expr(&ae.object)? else {
+                            unreachable!("lvalue Access: receptor no es Object")
+                        };
+                        let HulkType::UserDefined(type_name) = self.get_expr_type(&ae.object) else {
+                            unreachable!("lvalue Access: tipo no es UserDefined")
+                        };
+                        self.field_place(obj_ptr, &type_name, &ae.field)?
+                    }
+                    _ => return Err(CodegenError::InvalidLValue),
+                };
+
                 let rhs = self.visit_expr(&assign.value)?;
 
                 match assign.op {
                     AssignOp::Assign => {
-                        self.store_slot(&slot, rhs)?;
+                        self.store_place(&place, rhs)?;
                         Ok(rhs)
                     }
                     // Compound assigns son solo para Number (typechecker lo garantiza)
                     AssignOp::PlusAssign => {
-                        let old = self.builder
-                            .build_load(self.f64_type(), slot.ptr, "old")
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?
-                            .into_float_value();
-                        let rhs_f = self.require_number(rhs)?;
+                        let old    = self.require_number(self.load_place(&place, "old")?)?;
+                        let rhs_f  = self.require_number(rhs)?;
                         let result = self.builder.build_float_add(old, rhs_f, "plus_assign")
                             .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                        self.builder.build_store(slot.ptr, result)
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.store_place(&place, CgValue::Number(result))?;
                         Ok(CgValue::Number(result))
                     }
                     AssignOp::MinusAssign => {
-                        let old = self.builder
-                            .build_load(self.f64_type(), slot.ptr, "old")
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?
-                            .into_float_value();
-                        let rhs_f = self.require_number(rhs)?;
+                        let old    = self.require_number(self.load_place(&place, "old")?)?;
+                        let rhs_f  = self.require_number(rhs)?;
                         let result = self.builder.build_float_sub(old, rhs_f, "minus_assign")
                             .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                        self.builder.build_store(slot.ptr, result)
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.store_place(&place, CgValue::Number(result))?;
                         Ok(CgValue::Number(result))
                     }
                     AssignOp::MulAssign => {
-                        let old = self.builder
-                            .build_load(self.f64_type(), slot.ptr, "old")
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?
-                            .into_float_value();
-                        let rhs_f = self.require_number(rhs)?;
+                        let old    = self.require_number(self.load_place(&place, "old")?)?;
+                        let rhs_f  = self.require_number(rhs)?;
                         let result = self.builder.build_float_mul(old, rhs_f, "mul_assign")
                             .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                        self.builder.build_store(slot.ptr, result)
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.store_place(&place, CgValue::Number(result))?;
                         Ok(CgValue::Number(result))
                     }
                     AssignOp::DivAssign => {
-                        let old = self.builder
-                            .build_load(self.f64_type(), slot.ptr, "old")
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?
-                            .into_float_value();
-                        let rhs_f = self.require_number(rhs)?;
+                        let old    = self.require_number(self.load_place(&place, "old")?)?;
+                        let rhs_f  = self.require_number(rhs)?;
                         let result = self.builder.build_float_div(old, rhs_f, "div_assign")
                             .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                        self.builder.build_store(slot.ptr, result)
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.store_place(&place, CgValue::Number(result))?;
                         Ok(CgValue::Number(result))
                     }
                     AssignOp::ModAssign => {
-                        let old = self.builder
-                            .build_load(self.f64_type(), slot.ptr, "old")
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?
-                            .into_float_value();
-                        let rhs_f = self.require_number(rhs)?;
+                        let old    = self.require_number(self.load_place(&place, "old")?)?;
+                        let rhs_f  = self.require_number(rhs)?;
                         let result = self.builder.build_float_rem(old, rhs_f, "mod_assign")
                             .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                        self.builder.build_store(slot.ptr, result)
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.store_place(&place, CgValue::Number(result))?;
                         Ok(CgValue::Number(result))
                     }
                 }
             }
 
             // ── Llamada a función ─────────────────────────────────────────────
-            Expr::Call(call) => {
-                let callee_name = match &*call.callee {
-                    Expr::Identifier { name, .. } => name.clone(),
+            ExprKind::Call(call) => {
+                // ── base(args) — llamada directa al método del padre ──────────
+                // Según la spec: base() dentro de Knight.name() llama a Person.name()
+                // Es una llamada ESTÁTICA (no vtable) — la función es conocida en compile time
+                if let ExprKind::Base = &call.callee.kind {
+                    let method_name = self.current_method_name.clone()
+                        .ok_or_else(|| CodegenError::Unsupported(
+                            "base() fuera de contexto de método".into()))?;
+                    let type_name = self.current_type_name.clone()
+                        .ok_or_else(|| CodegenError::Unsupported(
+                            "base() fuera de contexto de tipo".into()))?;
+
+                    let parent_name = self.type_hierarchy.types.get(&type_name)
+                        .and_then(|ti| ti.parent.clone())
+                        .ok_or_else(|| CodegenError::Unsupported(
+                            format!("tipo '{}' no tiene padre", type_name)))?;
+
+                    // Ancestro que implementa el método (puede ser abuelo, bisabuelo...)
+                    let impl_type = self.type_hierarchy
+                        .find_method_impl_type(&parent_name, &method_name)
+                        .unwrap_or(parent_name);
+
+                    let sig = self.type_hierarchy.types
+                        .get(&impl_type)
+                        .and_then(|ti| ti.methods.get(&method_name))
+                        .cloned()
+                        .ok_or_else(|| CodegenError::Unsupported(
+                            format!("método '{}' no encontrado en '{}'", method_name, impl_type)))?;
+
+                    // self_ptr siempre es el primer argumento del método
+                    let self_ptr = self.self_ptr
+                        .ok_or_else(|| CodegenError::Unsupported(
+                            "base() sin self_ptr".into()))?;
+                    let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![self_ptr.into()];
+                    for (i, arg_expr) in call.args.iter().enumerate() {
+                        let val      = self.visit_expr(arg_expr)?;
+                        let expected = sig.params.get(i)
+                            .map(|(_, t)| t.clone())
+                            .unwrap_or(HulkType::Object);
+                        call_args.push(self.coerce_arg(val, &expected)?);
+                    }
+
+                    // Llamada directa por nombre — no carga ningún puntero de vtable
+                    let static_fn_name = format!("__hulk_method_{}_{}", impl_type, method_name);
+                    let fn_val = self.module.get_function(&static_fn_name)
+                        .ok_or_else(|| CodegenError::UnknownFunction(static_fn_name.clone()))?;
+
+                    let result = self.builder
+                        .build_call(fn_val, &call_args, "base_result")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                    return match &sig.return_type {
+                        HulkType::Number  => Ok(CgValue::Number(
+                            result.try_as_basic_value().left()
+                                .ok_or_else(|| CodegenError::Unsupported("base() sin retorno".into()))?
+                                .into_float_value()
+                        )),
+                        HulkType::Boolean => Ok(CgValue::Bool(
+                            result.try_as_basic_value().left()
+                                .ok_or_else(|| CodegenError::Unsupported("base() sin retorno".into()))?
+                                .into_int_value()
+                        )),
+                        HulkType::StringT => Ok(CgValue::Str(
+                            result.try_as_basic_value().left()
+                                .ok_or_else(|| CodegenError::Unsupported("base() sin retorno".into()))?
+                                .into_pointer_value()
+                        )),
+                        HulkType::Null | HulkType::Unknown => Ok(CgValue::Null),
+                        _ => Ok(CgValue::Object(
+                            result.try_as_basic_value().left()
+                                .ok_or_else(|| CodegenError::Unsupported("base() sin retorno".into()))?
+                                .into_pointer_value()
+                        )),
+                    };
+                }
+
+                // ── llamada normal por nombre ─────────────────────────────────
+                let callee_name = match &call.callee.kind {
+                    ExprKind::Identifier { name } => name.clone(),
                     _ => return Err(CodegenError::Unsupported(
                         "solo se soporta llamada directa por nombre".to_string(),
                     )),
@@ -429,7 +510,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── Bloque ────────────────────────────────────────────────────────
-            Expr::Block(block) => {
+            ExprKind::Block(block) => {
                 let mut last = CgValue::Void;
                 for e in &block.body {
                     if self.is_current_block_terminated() { break; }
@@ -439,7 +520,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── Let ───────────────────────────────────────────────────────────
-            Expr::Let(let_expr) => {
+            ExprKind::Let(let_expr) => {
                 let function = self.current_fn()?;
                 self.push_scope();
 
@@ -447,7 +528,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                     let val  = self.visit_expr(&binding.value)?;
                     let ty   = val.hulk_type();
                     let slot = self.create_entry_alloca_for(function, &binding.name, &ty)?;
-                    self.store_slot(&slot, val)?;
+                    self.store_place(&slot, val)?;
                     self.symbols.insert(binding.name.clone(), slot);
                 }
 
@@ -457,7 +538,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── If / elif / else — PHI tipado ─────────────────────────────────
-            Expr::If(if_expr) => {
+            ExprKind::If(if_expr) => {
                 let function = self.current_fn()?;
                 let merge_block = self.context.append_basic_block(function, "if_merge");
 
@@ -549,7 +630,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── While ─────────────────────────────────────────────────────────
-            Expr::While(while_expr) => {
+            ExprKind::While(while_expr) => {
                 let function = self.current_fn()?;
                 let cond_block = self.context.append_basic_block(function, "while_cond");
                 let body_block = self.context.append_basic_block(function, "while_body");
@@ -575,15 +656,116 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── Stubs ─────────────────────────────────────────────────────────
-            Expr::For(_)        => Err(CodegenError::Unsupported("for aun no implementado".to_string())),
-            Expr::New(_)        => Err(CodegenError::Unsupported("new aun no implementado".to_string())),
-            Expr::Access(_)     => Err(CodegenError::Unsupported("access aun no implementado".to_string())),
-            Expr::MethodCall(_) => Err(CodegenError::Unsupported("method_call aun no implementado".to_string())),
-            Expr::Index(_)      => Err(CodegenError::Unsupported("index aun no implementado".to_string())),
-            Expr::Is { .. }     => Err(CodegenError::Unsupported("is aun no implementado".to_string())),
-            Expr::As { .. }     => Err(CodegenError::Unsupported("as aun no implementado".to_string())),
-            Expr::Base(_)       => Err(CodegenError::Unsupported("base aun no implementado".to_string())),
-            Expr::Vector(_)     => Err(CodegenError::Unsupported("vector aun no implementado".to_string())),
+            ExprKind::For(_)        => Err(CodegenError::Unsupported("for aun no implementado".to_string())),
+            ExprKind::New(new_expr) => {
+                let type_name = new_expr.type_name.name().to_string();
+                let ctor_name = format!("__hulk_ctor_{}", type_name);
+
+                let ctor_fn = self.module.get_function(&ctor_name)
+                    .ok_or_else(|| CodegenError::UnknownFunction(ctor_name.clone()))?;
+
+                // Tipos esperados por el constructor (del TypeHierarchy)
+                let ctor_param_types: Vec<HulkType> = self.type_hierarchy.types
+                    .get(&type_name)
+                    .map(|ti| ti.constructor_params.iter().map(|(_, t)| t.clone()).collect())
+                    .unwrap_or_default();
+
+                // Evaluar cada argumento y coercionar al tipo LLVM correcto
+                let mut args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> = vec![];
+                for (i, arg_expr) in new_expr.args.iter().enumerate() {
+                    let val      = self.visit_expr(arg_expr)?;
+                    let expected = ctor_param_types.get(i).cloned().unwrap_or(HulkType::Number);
+                    args.push(self.coerce_arg(val, &expected)?);
+                }
+
+                let obj_ptr = self.builder
+                    .build_call(ctor_fn, &args, "new_obj")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .try_as_basic_value().left().unwrap()
+                    .into_pointer_value();
+
+                Ok(CgValue::Object(obj_ptr))
+            }
+            ExprKind::Access(ae) => {
+                // 1. evaluar el objeto → puntero al struct en heap
+                let CgValue::Object(obj_ptr) = self.visit_expr(&ae.object)? else {
+                    unreachable!("objeto UserDefined produjo un CgValue que no es Object")
+                };
+
+                // 2. tipo del objeto — el TypeChecker garantizó que es UserDefined
+                let HulkType::UserDefined(type_name) = self.get_expr_type(&ae.object) else {
+                    unreachable!("access sobre tipo no UserDefined: el TypeChecker debería haber rechazado esto")
+                };
+
+                // 3. calcular dirección del campo y leerlo
+                let place = self.field_place(obj_ptr, &type_name, &ae.field)?;
+                self.load_place(&place, &ae.field)
+            }
+            ExprKind::MethodCall(mc) => {
+                // 1. evaluar objeto → puntero al struct en heap
+                let CgValue::Object(obj_ptr) = self.visit_expr(&mc.object)? else {
+                    unreachable!("MethodCall: receptor no es Object")
+                };
+
+                // 2. tipo estático del objeto — garantizado por el TypeChecker
+                let HulkType::UserDefined(type_name) = self.get_expr_type(&mc.object) else {
+                    unreachable!("MethodCall: tipo no es UserDefined")
+                };
+
+                // 3. dispatch: carga vtable_ptr → slot → fn_ptr, firma LLVM y semántica
+                let (fn_ptr, fn_type, sig) =
+                    self.method_dispatch(obj_ptr, &type_name, &mc.method)?;
+
+                // 4. obj_ptr es el primer argumento (self del método)
+                let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> =
+                    vec![obj_ptr.into()];
+                for (i, arg_expr) in mc.args.iter().enumerate() {
+                    let val      = self.visit_expr(arg_expr)?;
+                    let expected = sig.params.get(i)
+                        .map(|(_, t)| t.clone())
+                        .unwrap_or(HulkType::Object);
+                    call_args.push(self.coerce_arg(val, &expected)?);
+                }
+
+                // 5. llamada indirecta vía vtable (dispatch dinámico)
+                let result = self.builder
+                    .build_indirect_call(fn_type, fn_ptr, &call_args, "method_result")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                // 6. convertir resultado a CgValue según tipo de retorno
+                match &sig.return_type {
+                    HulkType::Number  => Ok(CgValue::Number(
+                        result.try_as_basic_value().left()
+                            .ok_or_else(|| CodegenError::Unsupported(
+                                "método sin retorno usado como valor".into()))?
+                            .into_float_value()
+                    )),
+                    HulkType::Boolean => Ok(CgValue::Bool(
+                        result.try_as_basic_value().left()
+                            .ok_or_else(|| CodegenError::Unsupported(
+                                "método sin retorno usado como valor".into()))?
+                            .into_int_value()
+                    )),
+                    HulkType::StringT => Ok(CgValue::Str(
+                        result.try_as_basic_value().left()
+                            .ok_or_else(|| CodegenError::Unsupported(
+                                "método sin retorno usado como valor".into()))?
+                            .into_pointer_value()
+                    )),
+                    HulkType::Null | HulkType::Unknown => Ok(CgValue::Null),
+                    _ => Ok(CgValue::Object(
+                        result.try_as_basic_value().left()
+                            .ok_or_else(|| CodegenError::Unsupported(
+                                "método sin retorno usado como valor".into()))?
+                            .into_pointer_value()
+                    )),
+                }
+            }
+            ExprKind::Index(_)      => Err(CodegenError::Unsupported("index aun no implementado".to_string())),
+            ExprKind::Is { .. }     => Err(CodegenError::Unsupported("is aun no implementado".to_string())),
+            ExprKind::As { .. }     => Err(CodegenError::Unsupported("as aun no implementado".to_string())),
+            ExprKind::Base       => Err(CodegenError::Unsupported("base aun no implementado".to_string())),
+            ExprKind::Vector(_)     => Err(CodegenError::Unsupported("vector aun no implementado".to_string())),
         }
     }
 }
