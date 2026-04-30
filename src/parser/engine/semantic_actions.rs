@@ -5,7 +5,7 @@ use crate::parser::grammar::symbol::{
     NonTerminal as NT, Terminal as Tok, Symbol,
 };
 use crate::parser::ast::{
-    Span, Expr, Literal, BinaryOp, UnaryOp, PostfixOp, PostfixExpr,
+    Span, Expr, ExprKind, Literal, BinaryOp, UnaryOp, PostfixOp, PostfixExpr,
     AssignOp, LetBinding, ElifBranch, VectorExpr, TypeName,
     Param, FuncDecl, TypeDecl, TypeMember, AttributeDef,
     MethodDef, ProtocolDecl, MethodSignature, Decl, Program,
@@ -461,9 +461,9 @@ pub fn reduce(
             let expr      = a!(0).into_expr()?;
             let type_name = a!(2).into_type_name()?;
             if is_tok(prod, 1, &Tok::Is) {
-                StackValue::Expr(Expr::Is { expr: Box::new(expr), type_name, span })
+                StackValue::Expr(Expr::new(ExprKind::Is { expr: Box::new(expr), type_name }, span))
             } else {
-                StackValue::Expr(Expr::As { expr: Box::new(expr), type_name, span })
+                StackValue::Expr(Expr::new(ExprKind::As { expr: Box::new(expr), type_name }, span))
             }
         }
 
@@ -511,9 +511,9 @@ pub fn reduce(
         NT::PostfixExpr => {
             let op = if is_tok(prod, 1, &Tok::Increment) {
                 PostfixOp::Increment } else { PostfixOp::Decrement };
-            StackValue::Expr(Expr::Postfix(Box::new(
+            StackValue::Expr(Expr::new(ExprKind::Postfix(Box::new(
                 PostfixExpr::new(op, a!(0).into_expr()?, span)
-            )))
+            )), span))
         }
 
         // ── CallOrAccess ──────────────────────────────────────────────────
@@ -562,12 +562,12 @@ pub fn reduce(
                 }
                 Some(Symbol::T(Tok::Char)) => {
                     let (v, s) = a!(0).into_lexeme()?;
-                    StackValue::Expr(Expr::Literal(Literal::Char { value: v, span: s }))
+                    StackValue::Expr(Expr::new(ExprKind::Literal(Literal::Char { value: v, span: s }), s))
                 }
                 Some(Symbol::T(Tok::True))  => StackValue::Expr(Expr::bool(true,  span)),
                 Some(Symbol::T(Tok::False)) => StackValue::Expr(Expr::bool(false, span)),
                 Some(Symbol::T(Tok::Null))  => StackValue::Expr(Expr::null(span)),
-                Some(Symbol::T(Tok::Base))  => StackValue::Expr(Expr::Base(span)),
+                Some(Symbol::T(Tok::Base))  => StackValue::Expr(Expr::new(ExprKind::Base, span)),
                 Some(Symbol::T(Tok::Identifier)) => {
                     let (name, s) = a!(0).into_lexeme()?;
                     StackValue::Expr(Expr::identifier(name, s))
@@ -673,7 +673,7 @@ pub fn reduce(
         NT::NewExpr => {
             let type_name = a!(1).into_type_name()?;
             let new_args  = a!(3).into_expr_list()?;
-            StackValue::Expr(Expr::New(Box::new(NewExpr::new(type_name, new_args, span))))
+            StackValue::Expr(Expr::new(ExprKind::New(Box::new(NewExpr::new(type_name, new_args, span))), span))
         }
 
         // ── VectorLiteral ─────────────────────────────────────────────────
@@ -681,21 +681,21 @@ pub fn reduce(
             match plen(prod) {
                 2 => {
                     // [ ]
-                    StackValue::Expr(Expr::Vector(Box::new(VectorExpr::explicit(vec![], span))))
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(VectorExpr::explicit(vec![], span))), span))
                 }
                 3 => {
                     // [ ArgListNonEmpty ]
                     let elems = a!(1).into_expr_list()?;
-                    StackValue::Expr(Expr::Vector(Box::new(VectorExpr::explicit(elems, span))))
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(VectorExpr::explicit(elems, span))), span))
                 }
                 7 => {
                     // [ Expr | id in Expr ]
                     let body     = a!(1).into_expr()?;
                     let (var, _) = a!(3).into_lexeme()?;
                     let iterable = a!(5).into_expr()?;
-                    StackValue::Expr(Expr::Vector(Box::new(
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(
                         VectorExpr::generator(body, var, iterable, span)
-                    )))
+                    )), span))
                 }
                 _ => return Err(ParseError::internal("VectorLiteral desconocido", span)),
             }
