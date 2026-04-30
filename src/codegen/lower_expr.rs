@@ -762,7 +762,59 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                 }
             }
             ExprKind::Index(_)      => Err(CodegenError::Unsupported("index aun no implementado".to_string())),
-            ExprKind::Is { .. }     => Err(CodegenError::Unsupported("is aun no implementado".to_string())),
+            ExprKind::Is { expr: inner, type_name } => {
+                // 1. evaluar el objeto
+                let obj_val = self.visit_expr(inner)?;
+                let obj_ptr = match obj_val {
+                    CgValue::Object(p) => p,
+                    // null y no-objetos nunca conforman con ningún tipo
+                    _ => return Ok(CgValue::Bool(self.bool_type().const_int(0, false))),
+                };
+
+                let target_name = type_name.name().to_string();
+
+                // 2. caso especial: is Object — todo objeto lo es siempre
+                if target_name == "Object" {
+                    return Ok(CgValue::Bool(self.bool_type().const_int(1, false)));
+                }
+
+                // 3. obtener el rango DFS del tipo objetivo
+                let (min_tag, max_tag) = match self.type_registry.layouts.get(&target_name) {
+                    Some(layout) => (layout.type_tag, layout.max_tag),
+                    None => return Ok(CgValue::Bool(self.bool_type().const_int(0, false))),
+                };
+
+                // 4. cargar el type_tag del objeto desde el campo 0 (offset 0, i32)
+                let runtime_tag = self.builder
+                    .build_load(self.context.i32_type(), obj_ptr, "type_tag")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .into_int_value();
+
+                // 5. range check: min_tag <= runtime_tag <= max_tag
+                //    Equivale a comprobar si el tipo real es el target o algún subtipo
+                let i32_ty = self.context.i32_type();
+                let ge = self.builder
+                    .build_int_compare(
+                        IntPredicate::UGE,
+                        runtime_tag,
+                        i32_ty.const_int(min_tag as u64, false),
+                        "tag_ge",
+                    )
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                let le = self.builder
+                    .build_int_compare(
+                        IntPredicate::ULE,
+                        runtime_tag,
+                        i32_ty.const_int(max_tag as u64, false),
+                        "tag_le",
+                    )
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                let result = self.builder
+                    .build_and(ge, le, "is_result")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                Ok(CgValue::Bool(result))
+            }
             ExprKind::As { expr: inner, .. } => {
                 // As es un no-op en LLVM con opaque pointers.
                 // El TypeChecker ya validó el cast. El valor en memoria no cambia.
