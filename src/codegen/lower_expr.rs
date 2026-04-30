@@ -763,7 +763,11 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
             ExprKind::Index(_)      => Err(CodegenError::Unsupported("index aun no implementado".to_string())),
             ExprKind::Is { .. }     => Err(CodegenError::Unsupported("is aun no implementado".to_string())),
-            ExprKind::As { .. }     => Err(CodegenError::Unsupported("as aun no implementado".to_string())),
+            ExprKind::As { expr: inner, .. } => {
+                // As es un no-op en LLVM con opaque pointers.
+                // El TypeChecker ya validó el cast. El valor en memoria no cambia.
+                self.visit_expr(inner)
+            }
             ExprKind::Base       => Err(CodegenError::Unsupported("base aun no implementado".to_string())),
             ExprKind::Vector(_)     => Err(CodegenError::Unsupported("vector aun no implementado".to_string())),
         }
