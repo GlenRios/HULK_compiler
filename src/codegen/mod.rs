@@ -1,4 +1,5 @@
 pub mod context;
+pub mod objects;
 pub mod dump;
 pub mod error;
 pub mod jit;
