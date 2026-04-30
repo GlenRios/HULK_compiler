@@ -25,26 +25,140 @@ pub use new_expr::NewExpr;
 pub use call_access::{CallExpr, AccessExpr, MethodCallExpr, IndexExpr};
 pub use vector::VectorExpr;
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use crate::parser::ast::span::Span;
 use crate::parser::ast::types::TypeName;
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Contador global de IDs de nodo
+//  Cada Expr recibe un ID único al construirse.
+// ─────────────────────────────────────────────────────────────────────────────
+static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);
+
+pub fn alloc_node_id() -> u32 {
+    NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Expr — nodo raíz de todas las expresiones HULK
 //
-//  Cada variante contiene el struct que la describe en su propio archivo.
-//  Los tipos complejos van en Box<> para mantener Expr de tamaño fijo.
+//  Wrapper struct que envuelve ExprKind añadiendo:
+//    • id   — identificador único para el side table de tipos del codegen
+//    • span — posición en el fuente (movido aquí desde las variantes inline)
+// ─────────────────────────────────────────────────────────────────────────────
+#[derive(Debug, Clone)]
+pub struct Expr {
+    pub id:   u32,
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+// Ignoramos `id` en comparaciones para no romper tests que construyen nodos
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.span == other.span
+    }
+}
+
+impl Expr {
+    pub fn new(kind: ExprKind, span: Span) -> Self {
+        Self { id: alloc_node_id(), kind, span }
+    }
+
+    // ── Método span() mantenido por compatibilidad con código existente ───────
+    pub fn span(&self) -> Span { self.span }
+
+    // ── Constructores de conveniencia ─────────────────────────────────────────
+
+    pub fn number(value: impl Into<String>, span: Span) -> Self {
+        Self::new(ExprKind::Literal(Literal::Number { value: value.into(), span }), span)
+    }
+
+    pub fn string(value: impl Into<String>, span: Span) -> Self {
+        Self::new(ExprKind::Literal(Literal::String { value: value.into(), span }), span)
+    }
+
+    pub fn bool(value: bool, span: Span) -> Self {
+        Self::new(ExprKind::Literal(Literal::Bool { value, span }), span)
+    }
+
+    pub fn null(span: Span) -> Self {
+        Self::new(ExprKind::Literal(Literal::Null { span }), span)
+    }
+
+    pub fn identifier(name: impl Into<String>, span: Span) -> Self {
+        Self::new(ExprKind::Identifier { name: name.into() }, span)
+    }
+
+    pub fn binary(op: BinaryOp, left: Expr, right: Expr, span: Span) -> Self {
+        Self::new(ExprKind::Binary(Box::new(BinaryExpr::new(op, left, right, span))), span)
+    }
+
+    pub fn unary(op: UnaryOp, operand: Expr, span: Span) -> Self {
+        Self::new(ExprKind::Unary(Box::new(UnaryExpr::new(op, operand, span))), span)
+    }
+
+    pub fn assign(op: AssignOp, target: Expr, value: Expr, span: Span) -> Self {
+        Self::new(ExprKind::Assign(Box::new(AssignExpr::new(op, target, value, span))), span)
+    }
+
+    pub fn block(body: Vec<Expr>, span: Span) -> Self {
+        Self::new(ExprKind::Block(Box::new(BlockExpr::new(body, span))), span)
+    }
+
+    pub fn let_expr(bindings: Vec<LetBinding>, body: Expr, span: Span) -> Self {
+        Self::new(ExprKind::Let(Box::new(LetExpr::new(bindings, body, span))), span)
+    }
+
+    pub fn if_expr(
+        cond: Expr, then: Expr, elifs: Vec<ElifBranch>, else_: Expr, span: Span,
+    ) -> Self {
+        Self::new(ExprKind::If(Box::new(IfExpr::new(cond, then, elifs, else_, span))), span)
+    }
+
+    pub fn while_expr(cond: Expr, body: Expr, span: Span) -> Self {
+        Self::new(ExprKind::While(Box::new(WhileExpr::new(cond, body, span))), span)
+    }
+
+    pub fn for_expr(var: impl Into<String>, iterable: Expr, body: Expr, span: Span) -> Self {
+        Self::new(ExprKind::For(Box::new(ForExpr::new(var, iterable, body, span))), span)
+    }
+
+    pub fn call(callee: Expr, args: Vec<Expr>, span: Span) -> Self {
+        Self::new(ExprKind::Call(Box::new(CallExpr::new(callee, args, span))), span)
+    }
+
+    pub fn method_call(object: Expr, method: impl Into<String>, args: Vec<Expr>, span: Span) -> Self {
+        Self::new(ExprKind::MethodCall(Box::new(MethodCallExpr::new(object, method, args, span))), span)
+    }
+
+    pub fn access(object: Expr, field: impl Into<String>, span: Span) -> Self {
+        Self::new(ExprKind::Access(Box::new(AccessExpr::new(object, field, span))), span)
+    }
+
+    pub fn index(collection: Expr, idx: Expr, span: Span) -> Self {
+        Self::new(ExprKind::Index(Box::new(IndexExpr::new(collection, idx, span))), span)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ExprKind — variantes sintácticas de las expresiones HULK
+//
+//  Las variantes que antes tenían `span` inline (Identifier, Base, Is, As)
+//  ya no lo tienen — el span vive en el wrapper Expr.
+//  Las variantes que usan Box<SomeStruct> conservan sus structs sin cambios.
 // ─────────────────────────────────────────────────────────────────────────────
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum ExprKind {
     // ── Átomos ────────────────────────────────────────────────────────────
     /// Literal: número, string, char, bool, null
     Literal(Literal),
 
     /// Variable o función global: `x`, `myVar`, `print`
-    Identifier { name: String, span: Span },
+    Identifier { name: String },
 
     /// `base` — referencia al método padre dentro de un método
-    Base(Span),
+    Base,
 
     // ── Operaciones ───────────────────────────────────────────────────────
     /// Operación binaria: `a + b`, `x == y`, `s @ t`
@@ -61,10 +175,10 @@ pub enum Expr {
 
     // ── is / as ───────────────────────────────────────────────────────────
     /// Test de tipo: `expr is TypeName`
-    Is { expr: Box<Expr>, type_name: TypeName, span: Span },
+    Is { expr: Box<Expr>, type_name: TypeName },
 
     /// Downcast: `expr as TypeName`
-    As { expr: Box<Expr>, type_name: TypeName, span: Span },
+    As { expr: Box<Expr>, type_name: TypeName },
 
     // ── Llamadas y accesos ────────────────────────────────────────────────
     /// Llamada a función/functor: `f(args)`
@@ -100,105 +214,4 @@ pub enum Expr {
 
     /// Vector: `[e1, e2]` o `[expr | x in iter]`
     Vector(Box<VectorExpr>),
-}
-
-impl Expr {
-    // ── Constructores de conveniencia ─────────────────────────────────────
-
-    pub fn number(value: impl Into<String>, span: Span) -> Self {
-        Self::Literal(Literal::Number { value: value.into(), span })
-    }
-
-    pub fn string(value: impl Into<String>, span: Span) -> Self {
-        Self::Literal(Literal::String { value: value.into(), span })
-    }
-
-    pub fn bool(value: bool, span: Span) -> Self {
-        Self::Literal(Literal::Bool { value, span })
-    }
-
-    pub fn null(span: Span) -> Self {
-        Self::Literal(Literal::Null { span })
-    }
-
-    pub fn identifier(name: impl Into<String>, span: Span) -> Self {
-        Self::Identifier { name: name.into(), span }
-    }
-
-    pub fn binary(op: BinaryOp, left: Expr, right: Expr, span: Span) -> Self {
-        Self::Binary(Box::new(BinaryExpr::new(op, left, right, span)))
-    }
-
-    pub fn unary(op: UnaryOp, operand: Expr, span: Span) -> Self {
-        Self::Unary(Box::new(UnaryExpr::new(op, operand, span)))
-    }
-
-    pub fn assign(op: AssignOp, target: Expr, value: Expr, span: Span) -> Self {
-        Self::Assign(Box::new(AssignExpr::new(op, target, value, span)))
-    }
-
-    pub fn block(body: Vec<Expr>, span: Span) -> Self {
-        Self::Block(Box::new(BlockExpr::new(body, span)))
-    }
-
-    pub fn let_expr(bindings: Vec<LetBinding>, body: Expr, span: Span) -> Self {
-        Self::Let(Box::new(LetExpr::new(bindings, body, span)))
-    }
-
-    pub fn if_expr(
-        cond: Expr, then: Expr, elifs: Vec<ElifBranch>, else_: Expr, span: Span,
-    ) -> Self {
-        Self::If(Box::new(IfExpr::new(cond, then, elifs, else_, span)))
-    }
-
-    pub fn while_expr(cond: Expr, body: Expr, span: Span) -> Self {
-        Self::While(Box::new(WhileExpr::new(cond, body, span)))
-    }
-
-    pub fn for_expr(var: impl Into<String>, iterable: Expr, body: Expr, span: Span) -> Self {
-        Self::For(Box::new(ForExpr::new(var, iterable, body, span)))
-    }
-
-    pub fn call(callee: Expr, args: Vec<Expr>, span: Span) -> Self {
-        Self::Call(Box::new(CallExpr::new(callee, args, span)))
-    }
-
-    pub fn method_call(object: Expr, method: impl Into<String>, args: Vec<Expr>, span: Span) -> Self {
-        Self::MethodCall(Box::new(MethodCallExpr::new(object, method, args, span)))
-    }
-
-    pub fn access(object: Expr, field: impl Into<String>, span: Span) -> Self {
-        Self::Access(Box::new(AccessExpr::new(object, field, span)))
-    }
-
-    pub fn index(collection: Expr, idx: Expr, span: Span) -> Self {
-        Self::Index(Box::new(IndexExpr::new(collection, idx, span)))
-    }
-
-    // ── Utilidades ────────────────────────────────────────────────────────
-
-    pub fn span(&self) -> Span {
-        match self {
-            Self::Literal(l)             => l.span(),
-            Self::Identifier { span, .. } => *span,
-            Self::Base(span)             => *span,
-            Self::Binary(e)              => e.span,
-            Self::Unary(e)               => e.span,
-            Self::Postfix(e)             => e.span,
-            Self::Assign(e)              => e.span,
-            Self::Is { span, .. }        => *span,
-            Self::As { span, .. }        => *span,
-            Self::Call(e)                => e.span,
-            Self::Access(e)              => e.span,
-            Self::MethodCall(e)          => e.span,
-            Self::Index(e)               => e.span,
-            Self::Block(e)               => e.span,
-            Self::Let(e)                 => e.span,
-            Self::If(e)                  => e.span,
-            Self::While(e)               => e.span,
-            Self::For(e)                 => e.span,
-            Self::New(e)                 => e.span,
-            Self::Vector(e)              => e.span(),
-        }
-    }
 }
