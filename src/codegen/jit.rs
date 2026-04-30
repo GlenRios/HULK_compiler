@@ -3,6 +3,7 @@ use inkwell::context::Context;
 use inkwell::targets::{InitializationConfig, Target};
 
 use crate::parser::ast::Program;
+use crate::semantic;
 
 use super::context::CodegenContext;
 use super::error::{CodegenError, CodegenResult};
@@ -16,8 +17,11 @@ pub fn execute_program_jit(program: &Program) -> CodegenResult<f64> {
     Target::initialize_native(&InitializationConfig::default())
         .map_err(|e| CodegenError::Jit(e.to_string()))?;
 
+    let output = semantic::analyze(program)
+        .map_err(|_| CodegenError::Unsupported("errores semanticos".to_string()))?;
+
     let context = Context::create();
-    let mut cg = CodegenContext::new(&context, "hulk_jit_module");
+    let mut cg = CodegenContext::from_semantic_output(&context, "hulk_jit_module", output);
     cg.visit_program(program)?;
 
     let ee = cg
