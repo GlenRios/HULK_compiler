@@ -165,7 +165,7 @@ fn protocol_decl(name: &str, extends: Option<&str>, methods: Vec<(&str, TypeName
 macro_rules! check_ok {
     ($prog:expr) => {{
         let errors = match analyze(&$prog) {
-            Ok(())      => vec![],
+            Ok(_)       => vec![],
             Err(errors) => errors,
         };
         assert!(
@@ -179,7 +179,7 @@ macro_rules! check_ok {
 macro_rules! check_err {
     ($prog:expr, $kind:pat) => {{
         let errors = match analyze(&$prog) {
-            Ok(())      => vec![],
+            Ok(_)       => vec![],
             Err(errors) => errors,
         };
         assert!(
@@ -194,7 +194,7 @@ macro_rules! check_err {
 macro_rules! check_no_err {
     ($prog:expr, $check:expr) => {{
         let errors = match analyze(&$prog) {
-            Ok(()) => vec![],
+            Ok(_)       => vec![],
             Err(errors) => errors,
         };
         assert!(
@@ -208,7 +208,7 @@ macro_rules! check_no_err {
 macro_rules! error_count {
     ($prog:expr) => {{
         match analyze(&$prog) {
-            Ok(())      => 0,
+            Ok(_)       => 0,
             Err(errors) => errors.len(),
         }
     }};
@@ -1301,7 +1301,7 @@ fn base_outside_type_error() {
 fn never_does_not_cascade_in_binary() {
     // undefined_var + 1  → solo 1 error (UndefinedVariable), no InvalidBinaryTypes
     let errors = match analyze(&simple_program(add(id("undefined_var"), num("1")))) {
-        Ok(())      => vec![],
+        Ok(_)       => vec![],
         Err(errors) => errors,
     };
     assert_eq!(
@@ -2051,7 +2051,7 @@ fn protocol_error_message_includes_missing_method() {
         ),
     );
     let errors = match analyze(&p) {
-        Ok(())      => vec![],
+        Ok(_)       => vec![],
         Err(errors) => errors,
     };
     // Debe haber ProtocolNotConformed y el mensaje debe mencionar "deserialize"
@@ -2075,7 +2075,7 @@ fn complete_multiple_errors_detected() {
         add(str_("x"), bool_(true)),
     );
     let errors = match analyze(&p) {
-        Ok(()) => vec![],
+        Ok(_)  => vec![],
         Err(errors) => errors,
     };
     assert!(

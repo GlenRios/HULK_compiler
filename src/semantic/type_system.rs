@@ -326,6 +326,28 @@ impl TypeHierarchy {
         }
     }
 
+    // ── Lookup de implementación de método ───────────────────────────────────
+
+    /// Devuelve el nombre del tipo que implementa un método, subiendo
+    /// la cadena de herencia desde `type_name`.
+    /// `TypeInfo.methods` solo guarda métodos propios (no heredados).
+    pub fn find_method_impl_type(&self, type_name: &str, method_name: &str) -> Option<String> {
+        let mut cur = type_name.to_string();
+        loop {
+            if let Some(info) = self.types.get(&cur) {
+                if info.methods.contains_key(method_name) {
+                    return Some(cur);
+                }
+                match &info.parent {
+                    Some(p) => cur = p.clone(),
+                    None    => return None,
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+
     // ── Detección de herencia circular ────────────────────────────────────────
 
     pub fn has_circular_inheritance(&self, type_name: &str) -> bool {
