@@ -72,8 +72,8 @@ impl TypeChecker {
             );
         }
         // Constantes
-        self.symbols.define("PI",  Symbol::variable("PI",  HulkType::Number,  false));
-        self.symbols.define("E",   Symbol::variable("E",   HulkType::Number,  false));
+        self.symbols.define("PI",    Symbol::variable("PI",    HulkType::Number,  false));
+        self.symbols.define("E",     Symbol::variable("E",     HulkType::Number,  false));
         self.symbols.define("true",  Symbol::variable("true",  HulkType::Boolean, false));
         self.symbols.define("false", Symbol::variable("false", HulkType::Boolean, false));
     }
@@ -151,12 +151,12 @@ impl TypeChecker {
             }
         }
 
-        // ⚠️ Primero calcular params SIN borrow mutable activo
+        // Resolver constructor_params antes de mutar la jerarquía (evita borrow conflict)
         let constructor_params: Vec<(String, HulkType)> = t.type_args.iter()
             .map(|p| (p.name.clone(), self.resolve_opt_type(&p.type_ann, p.span)))
             .collect();
 
-        // Luego hacer el insert
+        // Registrar en la jerarquía
         self.types.types.entry(t.name.clone()).or_insert(TypeInfo {
             name:               t.name.clone(),
             parent:             t.parent.as_ref().map(|p| p.name().into()),
@@ -166,7 +166,7 @@ impl TypeChecker {
             is_builtin:         false,
         });
 
-        // Registrar en la tabla de símbolos (para `new T(...)`)
+        // Registrar en la tabla de símbolos (para `new T(...)` y llamadas directas)
         if !self.symbols.in_current_scope(&t.name) {
             self.symbols.define(&t.name, Symbol::type_sym(&t.name));
         }
@@ -282,9 +282,9 @@ impl TypeChecker {
 
     fn check_decl(&mut self, decl: &Decl) {
         match decl {
-            Decl::Function(f)  => self.check_func_decl(f),
-            Decl::Type(t)      => self.check_type_decl(t),
-            Decl::Protocol(_)  => { /* firmas ya verificadas en collect */ }
+            Decl::Function(f) => self.check_func_decl(f),
+            Decl::Type(t)     => self.check_type_decl(t),
+            Decl::Protocol(_) => { /* firmas ya verificadas en collect */ }
         }
     }
 
@@ -328,13 +328,13 @@ impl TypeChecker {
         let prev_type = self.current_type.replace(t.name.clone());
         self.symbols.push_scope();
 
-        // Parámetros del constructor disponibles en las inicializaciones
+        // Parámetros del constructor disponibles en las inicializaciones y en parent_args
         for param in &t.type_args {
             let ty = self.resolve_opt_type(&param.type_ann, param.span);
             self.symbols.define(&param.name, Symbol::variable(&param.name, ty, false));
         }
 
-        // Detectar herencia circular
+        // Detectar herencia circular antes de proceder
         if self.types.has_circular_inheritance(&t.name) {
             self.errors.push(SemanticError::CircularInheritance {
                 type_name: t.name.clone(), span: t.span,
@@ -344,6 +344,81 @@ impl TypeChecker {
             return;
         }
 
+        // ── Verificar argumentos al constructor del padre (parent_args) ────────
+        //
+        // El PDF confirma que TypeDecl tiene parent_args: Vec<Expr> que son los
+        // argumentos pasados al constructor del padre en la cláusula inherits.
+        //
+        // Ejemplo:
+        //   type Circle(r: Number) inherits Shape(r * 2, "circle") { ... }
+        //                                          ^^^^^^^^^^^^^^^^
+        //                                          estos son parent_args
+        //
+        // Reglas:
+        //   1. Si hay parent_args, debe haber padre declarado
+        //   2. La aridad de parent_args debe coincidir con el constructor del padre
+        //   3. Los tipos de parent_args deben conformar con los parámetros del padre
+        //   4. Los parent_args pueden referenciar los params del constructor propio
+        //      (ya están en scope por el push_scope anterior)
+        if !t.parent_args.is_empty() {
+            match &t.parent {
+                None => {
+                    // parent_args sin padre declarado → error
+                    self.errors.push(SemanticError::UndefinedType {
+                        name: "<padre>".into(), span: t.span,
+                    });
+                }
+                Some(parent_type_name) => {
+                    let parent_name = parent_type_name.name().to_string();
+                    let ctor_params = self.types.types.get(&parent_name)
+                        .map(|ti| ti.constructor_params.clone())
+                        .unwrap_or_default();
+
+                    if t.parent_args.len() != ctor_params.len() {
+                        self.errors.push(SemanticError::WrongArgCount {
+                            name:     format!("{} (constructor padre)", parent_name),
+                            expected: ctor_params.len(),
+                            found:    t.parent_args.len(),
+                            span:     t.span,
+                        });
+                        // Chequear los args de todos modos para no perder errores
+                        for arg in &t.parent_args { self.check_expr(arg); }
+                    } else {
+                        for (arg, (_, expected_ty)) in
+                            t.parent_args.iter().zip(ctor_params.iter())
+                        {
+                            let arg_ty = self.check_expr(arg);
+                            if !self.types.conforms(&arg_ty, expected_ty) {
+                                self.errors.push(SemanticError::TypeMismatch {
+                                    expected: expected_ty.name(),
+                                    found:    arg_ty.name(),
+                                    span:     t.span,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } else if t.parent.is_some() {
+            // Hay padre pero no parent_args:
+            // Verificar que el constructor del padre no espera argumentos
+            // (si espera > 0 args y no se pasan, es un error)
+            let parent_name = t.parent.as_ref().unwrap().name().to_string();
+            let ctor_params = self.types.types.get(&parent_name)
+                .map(|ti| ti.constructor_params.clone())
+                .unwrap_or_default();
+
+            if !ctor_params.is_empty() {
+                self.errors.push(SemanticError::WrongArgCount {
+                    name:     format!("{} (constructor padre)", parent_name),
+                    expected: ctor_params.len(),
+                    found:    0,
+                    span:     t.span,
+                });
+            }
+        }
+
+        // ── Chequear miembros ─────────────────────────────────────────────────
         for member in &t.members {
             match member {
                 TypeMember::Attribute(attr) => {
@@ -379,7 +454,10 @@ impl TypeChecker {
 
                     for param in &method.params {
                         let ty = self.resolve_opt_type(&param.type_ann, param.span);
-                        self.symbols.define(&param.name, Symbol::variable(&param.name, ty, false));
+                        self.symbols.define(
+                            &param.name,
+                            Symbol::variable(&param.name, ty, false),
+                        );
                     }
 
                     let expected_ret = self.resolve_opt_type(&method.return_type, method.span);
@@ -414,26 +492,26 @@ impl TypeChecker {
 
     pub fn check_expr(&mut self, expr: &Expr) -> HulkType {
         match expr {
-            Expr::Literal(lit)                          => self.check_literal(lit),
-            Expr::Identifier { name, span }             => self.check_identifier(name, *span),
-            Expr::Base(span)                            => self.check_base(*span),
-            Expr::Binary(b)                             => self.check_binary(b),
-            Expr::Unary(u)                              => self.check_unary(u),
-            Expr::Postfix(p)                            => self.check_postfix(p),
-            Expr::Assign(a)                             => self.check_assign(a),
-            Expr::Is { expr, type_name, span }          => self.check_is(expr, type_name, *span),
-            Expr::As { expr, type_name, span }          => self.check_as(expr, type_name, *span),
-            Expr::Call(c)                               => self.check_call(c),
-            Expr::Access(a)                             => self.check_access(a),
-            Expr::MethodCall(m)                         => self.check_method_call(m),
-            Expr::Index(i)                              => self.check_index(i),
-            Expr::Block(b)                              => self.check_block(b),
-            Expr::Let(l)                                => self.check_let(l),
-            Expr::If(i)                                 => self.check_if(i),
-            Expr::While(w)                              => self.check_while(w),
-            Expr::For(f)                                => self.check_for(f),
-            Expr::New(n)                                => self.check_new(n),
-            Expr::Vector(v)                             => self.check_vector(v),
+            Expr::Literal(lit)                       => self.check_literal(lit),
+            Expr::Identifier { name, span }          => self.check_identifier(name, *span),
+            Expr::Base(span)                         => self.check_base(*span),
+            Expr::Binary(b)                          => self.check_binary(b),
+            Expr::Unary(u)                           => self.check_unary(u),
+            Expr::Postfix(p)                         => self.check_postfix(p),
+            Expr::Assign(a)                          => self.check_assign(a),
+            Expr::Is { expr, type_name, span }       => self.check_is(expr, type_name, *span),
+            Expr::As { expr, type_name, span }       => self.check_as(expr, type_name, *span),
+            Expr::Call(c)                            => self.check_call(c),
+            Expr::Access(a)                          => self.check_access(a),
+            Expr::MethodCall(m)                      => self.check_method_call(m),
+            Expr::Index(i)                           => self.check_index(i),
+            Expr::Block(b)                           => self.check_block(b),
+            Expr::Let(l)                             => self.check_let(l),
+            Expr::If(i)                              => self.check_if(i),
+            Expr::While(w)                           => self.check_while(w),
+            Expr::For(f)                             => self.check_for(f),
+            Expr::New(n)                             => self.check_new(n),
+            Expr::Vector(v)                          => self.check_vector(v),
         }
     }
 
@@ -481,7 +559,7 @@ impl TypeChecker {
                 match parent {
                     Some(p) => HulkType::UserDefined(p),
                     None    => {
-                        // Tipo sin padre — base() no tiene sentido, pero no es error fatal
+                        // Tipo sin padre — base() no tiene sentido
                         HulkType::Object
                     }
                 }
@@ -624,8 +702,8 @@ impl TypeChecker {
         let value_ty  = self.check_expr(&a.value);
 
         if !target_ty.is_never() && !value_ty.is_never() {
-            // Para +=, -=, *=, /=, %= el target debe ser Number
             match &a.op {
+                // Para +=, -=, *=, /=, %= el target y el valor deben ser Number
                 AssignOp::PlusAssign | AssignOp::MinusAssign
                 | AssignOp::MulAssign | AssignOp::DivAssign | AssignOp::ModAssign => {
                     if target_ty != HulkType::Number {
@@ -658,7 +736,6 @@ impl TypeChecker {
 
     fn check_is(&mut self, expr: &Expr, type_name: &TypeName, _span: Span) -> HulkType {
         self.check_expr(expr);
-        // Verificar que el tipo existe
         let tn = type_name.name();
         if self.types.types.get(tn).is_none()
             && self.types.protocols.get(tn).is_none()
@@ -667,16 +744,14 @@ impl TypeChecker {
                 name: tn.into(), span: type_name.span(),
             });
         }
-        // `is` siempre retorna Boolean
         HulkType::Boolean
     }
 
     fn check_as(&mut self, expr: &Expr, type_name: &TypeName, span: Span) -> HulkType {
-        let expr_ty  = self.check_expr(expr);
+        let expr_ty   = self.check_expr(expr);
         let target_ty = self.resolve_type_name(type_name);
 
         if !expr_ty.is_never() && !target_ty.is_never() {
-            // Debe haber relación de herencia en alguna dirección (up o downcast)
             let valid = self.types.conforms(&expr_ty, &target_ty)
                      || self.types.conforms(&target_ty, &expr_ty);
             if !valid {
@@ -694,6 +769,7 @@ impl TypeChecker {
 
     fn check_call(&mut self, c: &CallExpr) -> HulkType {
         match c.callee.as_ref() {
+
             // ── base() — llamada al constructor del padre ─────────────────────
             Expr::Base(span) => {
                 match self.current_type.clone() {
@@ -708,14 +784,12 @@ impl TypeChecker {
                             .and_then(|t| t.parent.clone());
                         match parent {
                             None => {
-                                // Tipo sin padre — base() no tiene sentido
                                 self.errors.push(SemanticError::UndefinedVariable {
                                     name: "base".into(), span: *span,
                                 });
                                 HulkType::Never
                             }
                             Some(parent_name) => {
-                                // Verificar args contra el constructor del padre
                                 let ctor = self.types.types.get(&parent_name)
                                     .map(|t| t.constructor_params.clone())
                                     .unwrap_or_default();
@@ -748,7 +822,6 @@ impl TypeChecker {
             }
 
             // ── Llamada a función / constructor por nombre ────────────────────
-            // ── Llamada a función / constructor por nombre ────────────────────
             Expr::Identifier { name, span } => {
                 let sym = self.symbols.lookup(name).cloned();
                 match sym {
@@ -758,11 +831,10 @@ impl TypeChecker {
                             return_type.clone()
                         }
                         super::symbol_table::SymbolKind::Type => {
-                            // Llamada a constructor sin `new` — verificar aridad también
+                            // Llamada a constructor sin `new` — verificar aridad
                             let ctor = self.types.types.get(name)
                                 .map(|t| t.constructor_params.clone())
                                 .unwrap_or_default();
-
                             if !ctor.is_empty() || !c.args.is_empty() {
                                 let param_types: Vec<HulkType> = ctor.iter()
                                     .map(|(_, t)| t.clone())
@@ -796,10 +868,10 @@ impl TypeChecker {
 
     fn check_call_args(
         &mut self,
-        name:     &str,
-        params:   &[HulkType],
-        args:     &[Expr],
-        span:     Span,
+        name:   &str,
+        params: &[HulkType],
+        args:   &[Expr],
+        span:   Span,
     ) {
         if args.len() != params.len() {
             self.errors.push(SemanticError::WrongArgCount {
@@ -813,7 +885,6 @@ impl TypeChecker {
             for (arg, expected_ty) in args.iter().zip(params.iter()) {
                 let arg_ty = self.check_expr(arg);
                 if !self.types.conforms(&arg_ty, expected_ty) {
-                    // Error más específico cuando el parámetro es un protocolo
                     self.emit_type_or_protocol_error(&arg_ty, expected_ty, span);
                 }
             }
@@ -822,11 +893,14 @@ impl TypeChecker {
 
     /// Emite `ProtocolNotConformed` cuando el tipo esperado es un protocolo,
     /// o `TypeMismatch` en cualquier otro caso.
-    /// En ambos casos solo emite si los tipos no conforman.
-    fn emit_type_or_protocol_error(&mut self, found_ty: &HulkType, expected_ty: &HulkType, span: Span) {
+    fn emit_type_or_protocol_error(
+        &mut self,
+        found_ty:    &HulkType,
+        expected_ty: &HulkType,
+        span:        Span,
+    ) {
         match expected_ty {
             HulkType::Protocol(proto_name) => {
-                // Obtener el nombre concreto del tipo para el mensaje
                 let type_name = match found_ty {
                     HulkType::UserDefined(n) => n.clone(),
                     HulkType::Number         => "Number".into(),
@@ -858,12 +932,11 @@ impl TypeChecker {
         let obj_ty = self.check_expr(&m.object);
         if obj_ty.is_never() { return HulkType::Never; }
 
-        let (type_name, is_protocol) = match &obj_ty {
-            HulkType::UserDefined(n) => (n.clone(), false),
-            HulkType::Protocol(p)    => (p.clone(), true),
-            HulkType::Number         => ("Number".into(), false),
-            HulkType::StringT        => ("String".into(), false),
-            HulkType::Boolean        => ("Boolean".into(), false),
+        let type_name = match &obj_ty {
+            HulkType::UserDefined(n) => n.clone(),
+            HulkType::Number         => "Number".into(),
+            HulkType::StringT        => "String".into(),
+            HulkType::Boolean        => "Boolean".into(),
             HulkType::Object         => {
                 for arg in &m.args { self.check_expr(arg); }
                 return HulkType::Object;
@@ -878,23 +951,19 @@ impl TypeChecker {
             }
         };
 
-        let sig = if is_protocol {
-            self.lookup_method_in_protocol(&type_name, &m.method)
-        } else {
-            self.lookup_method(&type_name, &m.method)
-        };
-
+        let sig = self.lookup_method(&type_name, &m.method);
         match sig {
             Some(sig) => {
-                let param_types: Vec<HulkType> = sig.params.iter().map(|(_, t)| t.clone()).collect();
+                let param_types: Vec<HulkType> = sig.params.iter()
+                    .map(|(_, t)| t.clone()).collect();
                 self.check_call_args(&m.method, &param_types, &m.args, m.span);
                 sig.return_type.clone()
             }
             None => {
                 self.errors.push(SemanticError::MethodNotFound {
-                    type_name: if is_protocol { format!("protocol {}", type_name) } else { type_name },
+                    type_name,
                     method: m.method.clone(),
-                    span: m.span,
+                    span:   m.span,
                 });
                 HulkType::Never
             }
@@ -919,37 +988,15 @@ impl TypeChecker {
         }
     }
 
-    /// Busca un método en la jerarquía de protocolos (incluyendo `extends`).
-    fn lookup_method_in_protocol(&self, proto_name: &str, method: &str) -> Option<FuncSignature> {
-        let mut current = proto_name.to_string();
-        loop {
-            if let Some(proto) = self.types.protocols.get(&current) {
-                if let Some(sig) = proto.methods.get(method) {
-                    return Some(sig.clone());
-                }
-                match &proto.extends {
-                    Some(parent) => current = parent.clone(),
-                    None => return None,
-                }
-            } else {
-                return None;
-            }
-        }
-    }
-
     fn check_access(&mut self, a: &AccessExpr) -> HulkType {
         let obj_ty = self.check_expr(&a.object);
         if obj_ty.is_never() { return HulkType::Never; }
 
         let type_name = match &obj_ty {
             HulkType::UserDefined(n) => n.clone(),
-            _ => {
-                // Acceso en primitivos/Object → aceptar sin error (puede ser método built-in)
-                return HulkType::Object;
-            }
+            _ => return HulkType::Object, // primitivos/Object — aceptar sin error
         };
 
-        // Buscar atributo subiendo la jerarquía
         if let Some(ty) = self.lookup_attribute(&type_name, &a.field) {
             return ty;
         }
@@ -1014,7 +1061,7 @@ impl TypeChecker {
             last_ty = self.check_expr(expr);
         }
         self.symbols.pop_scope();
-        last_ty // tipo del bloque = tipo de la última expresión
+        last_ty
     }
 
     fn check_let(&mut self, l: &LetExpr) -> HulkType {
@@ -1031,7 +1078,7 @@ impl TypeChecker {
                 }
                 ann_ty
             } else {
-                // Inferencia: usar el tipo del valor
+                // Inferencia: usar el tipo del valor directamente
                 if matches!(val_ty, HulkType::Unknown) {
                     self.errors.push(SemanticError::CannotInferType {
                         name: binding.name.clone(), span: binding.span,
@@ -1093,22 +1140,18 @@ impl TypeChecker {
                 span:     w.span,
             });
         }
-        // El tipo del while es el de la última evaluación del cuerpo
         self.check_expr(&w.body)
     }
 
     fn check_for(&mut self, f: &ForExpr) -> HulkType {
         let iter_ty = self.check_expr(&f.iterable);
 
-        // Determinar el tipo del elemento
         let elem_ty = match &iter_ty {
             HulkType::Vector(t) => *t.clone(),
             HulkType::UserDefined(n) => {
-                // Range → Number
-                if n == "Range" { HulkType::Number }
-                // Verificar que implementa Iterable
-                else if self.types.conforms_protocol(n, "Iterable") {
-                    // Tipo del current() del iterable
+                if n == "Range" {
+                    HulkType::Number
+                } else if self.types.conforms_protocol(n, "Iterable") {
                     self.types.types.get(n)
                         .and_then(|t| t.methods.get("current"))
                         .map(|s| s.return_type.clone())
@@ -1143,7 +1186,6 @@ impl TypeChecker {
     fn check_new(&mut self, n: &NewExpr) -> HulkType {
         let type_name = n.type_name.name().to_string();
 
-        // Verificar que el tipo existe y no es primitivo
         match self.types.types.get(&type_name) {
             None => {
                 self.errors.push(SemanticError::UndefinedType {
@@ -1162,7 +1204,6 @@ impl TypeChecker {
             _ => {}
         }
 
-        // ── Verificar aridad y tipos del constructor ──────────────────────────
         let ctor_params = self.types.types.get(&type_name)
             .map(|t| t.constructor_params.clone())
             .unwrap_or_default();
@@ -1174,7 +1215,6 @@ impl TypeChecker {
                 found:    n.args.len(),
                 span:     n.span,
             });
-            // Chequear los args de todos modos para no perder otros errores
             for arg in &n.args { self.check_expr(arg); }
         } else {
             for (arg, (_, expected_ty)) in n.args.iter().zip(ctor_params.iter()) {
@@ -1196,7 +1236,6 @@ impl TypeChecker {
         match v {
             VectorExpr::Explicit { elements, .. } => {
                 if elements.is_empty() {
-                    // Vector vacío → tipo inferido como Object[]
                     return HulkType::Vector(Box::new(HulkType::Object));
                 }
                 let first_ty = self.check_expr(&elements[0]);
@@ -1210,10 +1249,10 @@ impl TypeChecker {
             VectorExpr::Generator { body, var, iterable, .. } => {
                 let iter_ty = self.check_expr(iterable);
                 let elem_ty = match &iter_ty {
-                    HulkType::Vector(t)          => *t.clone(),
-                    HulkType::UserDefined(n) if n == "Range" => HulkType::Number,
-                    HulkType::Never              => HulkType::Never,
-                    _                            => HulkType::Object,
+                    HulkType::Vector(t)                          => *t.clone(),
+                    HulkType::UserDefined(n) if n == "Range"     => HulkType::Number,
+                    HulkType::Never                              => HulkType::Never,
+                    _                                            => HulkType::Object,
                 };
 
                 self.symbols.push_scope();
@@ -1258,7 +1297,7 @@ impl TypeChecker {
     }
 
     /// Resuelve una anotación de tipo opcional.
-    /// Si no hay anotación → HulkType::Unknown (para inferencia posterior).
+    /// None → HulkType::Unknown (para inferencia posterior).
     pub fn resolve_opt_type(&self, ann: &Option<TypeName>, _span: Span) -> HulkType {
         match ann {
             Some(tn) => self.resolve_type_name(tn),

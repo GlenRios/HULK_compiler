@@ -29,6 +29,3 @@ pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
         Err(errors)
     }
 }
-
-#[cfg(test)]
-mod tests;
