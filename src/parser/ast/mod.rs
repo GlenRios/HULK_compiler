@@ -13,7 +13,7 @@ pub use program::Program;
 
 // Re-exports de Expr y los nodos más usados para evitar rutas largas
 pub use expr::{
-    Expr,
+    Expr, ExprKind,
     Literal,
     BinaryExpr, BinaryOp,
     UnaryExpr,  UnaryOp,
@@ -58,7 +58,7 @@ mod tests {
         let program = Program::new(vec![], entry, dummy());
 
         assert!(program.declarations.is_empty());
-        assert!(matches!(*program.entry, Expr::Call(_)));
+        assert!(matches!(program.entry.kind, ExprKind::Call(_)));
     }
 
     #[test]
@@ -70,7 +70,7 @@ mod tests {
             Expr::number("2", dummy()),
             dummy(),
         );
-        assert!(matches!(e, Expr::Binary(_)));
+        assert!(matches!(e.kind, ExprKind::Binary(_)));
     }
 
     #[test]
@@ -82,8 +82,8 @@ mod tests {
             Expr::identifier("x", dummy()),
             dummy(),
         );
-        assert!(matches!(e, Expr::Let(_)));
-        if let Expr::Let(let_e) = &e {
+        assert!(matches!(e.kind, ExprKind::Let(_)));
+        if let ExprKind::Let(let_e) = &e.kind {
             assert_eq!(let_e.bindings.len(), 1);
             assert_eq!(let_e.bindings[0].name, "x");
         }
@@ -99,8 +99,8 @@ mod tests {
             Expr::number("2", dummy()),
             dummy(),
         );
-        assert!(matches!(e, Expr::If(_)));
-        if let Expr::If(if_e) = &e {
+        assert!(matches!(e.kind, ExprKind::If(_)));
+        if let ExprKind::If(if_e) = &e.kind {
             assert!(if_e.elif_chain.is_empty());
         }
     }
@@ -115,9 +115,9 @@ mod tests {
             ],
             dummy(),
         );
-        if let Expr::Block(b) = &e {
+        if let ExprKind::Block(b) = &e.kind {
             assert_eq!(b.body.len(), 2);
-            assert!(matches!(b.tail(), Expr::Call(_)));
+            assert!(matches!(b.tail().kind, ExprKind::Call(_)));
         }
     }
 
