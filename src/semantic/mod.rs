@@ -7,24 +7,25 @@ pub mod type_checker;
 
 pub use errors::SemanticError;
 pub use type_checker::TypeChecker;
-pub use type_system::HulkType;
+pub use type_system::{HulkType, TypeHierarchy};
 
+use std::collections::HashMap;
 use crate::parser::ast::Program;
 
-/// Punto de entrada público del análisis semántico.
-///
-/// ```rust
-/// let program = parser.parse();
-/// match semantic::analyze(&program) {
-///     Ok(())       => println!("✅ Semántico OK"),
-///     Err(errors)  => { for e in &errors { eprintln!("❌ {}", e); } }
-/// }
-/// ```
-pub fn analyze(program: &Program) -> Result<(), Vec<SemanticError>> {
+/// Todo lo que el codegen necesita del análisis semántico.
+pub struct SemanticOutput {
+    pub hierarchy:  TypeHierarchy,
+    pub expr_types: HashMap<u32, HulkType>,
+}
+
+pub fn analyze(program: &Program) -> Result<SemanticOutput, Vec<SemanticError>> {
     let mut checker = TypeChecker::new();
     let errors = checker.check_program(program);
     if errors.is_empty() {
-        Ok(())
+        Ok(SemanticOutput {
+            hierarchy:  checker.types,
+            expr_types: checker.expr_types,
+        })
     } else {
         Err(errors)
     }

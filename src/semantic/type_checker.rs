@@ -6,7 +6,7 @@ use crate::parser::ast::{
     // Declaraciones
     Decl, FuncDecl, TypeDecl, TypeMember, ProtocolDecl, Param,
     // Expresiones
-    Expr, Literal, BinaryOp, UnaryOp, PostfixOp, AssignOp,
+    Expr, ExprKind, Literal, BinaryOp, UnaryOp, PostfixOp, AssignOp,
     BinaryExpr, UnaryExpr, PostfixExpr, AssignExpr,
     BlockExpr, LetExpr, IfExpr, WhileExpr, ForExpr,
     CallExpr, AccessExpr, MethodCallExpr, IndexExpr,
@@ -27,14 +27,18 @@ use std::collections::HashMap;
 //  TypeChecker
 // ─────────────────────────────────────────────────────────────────────────────
 pub struct TypeChecker {
-    pub symbols: SymbolTable,
-    pub types:   TypeHierarchy,
-    pub errors:  Vec<SemanticError>,
+    pub symbols:        SymbolTable,
+    pub types:          TypeHierarchy,
+    pub errors:         Vec<SemanticError>,
+    /// node_id → tipo de cada expresión chequeada.
+    /// El codegen lo consulta para saber el tipo de cualquier sub-expresión.
+    pub expr_types: HashMap<u32, HulkType>,
 
     // Contexto interno
-    current_type:     Option<String>,   // tipo que se está analizando ahora
-    current_ret_type: Option<HulkType>, // retorno esperado de la función actual
-    in_initializer:   bool,             // true → self está prohibido
+    current_type:        Option<String>,   // tipo que se está analizando ahora
+    current_method_name: Option<String>,   // método que se está chequeando ahora
+    current_ret_type:    Option<HulkType>, // retorno esperado de la función actual
+    in_initializer:      bool,             // true → self está prohibido
 }
 
 impl TypeChecker {
@@ -43,9 +47,11 @@ impl TypeChecker {
             symbols:          SymbolTable::new(),
             types:            TypeHierarchy::new(),
             errors:           Vec::new(),
-            current_type:     None,
-            current_ret_type: None,
-            in_initializer:   false,
+            expr_types:       HashMap::new(),
+            current_type:        None,
+            current_method_name: None,
+            current_ret_type:    None,
+            in_initializer:      false,
         };
         tc.register_builtin_functions();
         tc
@@ -366,6 +372,8 @@ impl TypeChecker {
 
                 TypeMember::Method(method) => {
                     self.symbols.push_scope();
+                    // Guardar el nombre del método para que base() sepa a qué método del padre llamar
+                    let prev_method = self.current_method_name.replace(method.name.clone());
 
                     // self disponible con el tipo del tipo actual
                     self.symbols.define(
@@ -398,6 +406,7 @@ impl TypeChecker {
                     }
 
                     self.current_ret_type = prev_ret;
+                    self.current_method_name = prev_method;
                     self.symbols.pop_scope();
                 }
             }
@@ -413,28 +422,31 @@ impl TypeChecker {
     // ─────────────────────────────────────────────────────────────────────────
 
     pub fn check_expr(&mut self, expr: &Expr) -> HulkType {
-        match expr {
-            Expr::Literal(lit)                          => self.check_literal(lit),
-            Expr::Identifier { name, span }             => self.check_identifier(name, *span),
-            Expr::Base(span)                            => self.check_base(*span),
-            Expr::Binary(b)                             => self.check_binary(b),
-            Expr::Unary(u)                              => self.check_unary(u),
-            Expr::Postfix(p)                            => self.check_postfix(p),
-            Expr::Assign(a)                             => self.check_assign(a),
-            Expr::Is { expr, type_name, span }          => self.check_is(expr, type_name, *span),
-            Expr::As { expr, type_name, span }          => self.check_as(expr, type_name, *span),
-            Expr::Call(c)                               => self.check_call(c),
-            Expr::Access(a)                             => self.check_access(a),
-            Expr::MethodCall(m)                         => self.check_method_call(m),
-            Expr::Index(i)                              => self.check_index(i),
-            Expr::Block(b)                              => self.check_block(b),
-            Expr::Let(l)                                => self.check_let(l),
-            Expr::If(i)                                 => self.check_if(i),
-            Expr::While(w)                              => self.check_while(w),
-            Expr::For(f)                                => self.check_for(f),
-            Expr::New(n)                                => self.check_new(n),
-            Expr::Vector(v)                             => self.check_vector(v),
-        }
+        let ty = match &expr.kind {
+            ExprKind::Literal(lit)                        => self.check_literal(lit),
+            ExprKind::Identifier { name }                 => self.check_identifier(name, expr.span),
+            ExprKind::Base                                => self.check_base(expr.span),
+            ExprKind::Binary(b)                           => self.check_binary(b),
+            ExprKind::Unary(u)                            => self.check_unary(u),
+            ExprKind::Postfix(p)                          => self.check_postfix(p),
+            ExprKind::Assign(a)                           => self.check_assign(a),
+            ExprKind::Is { expr: inner, type_name }       => self.check_is(inner, type_name, expr.span),
+            ExprKind::As { expr: inner, type_name }       => self.check_as(inner, type_name, expr.span),
+            ExprKind::Call(c)                             => self.check_call(c),
+            ExprKind::Access(a)                           => self.check_access(a),
+            ExprKind::MethodCall(m)                       => self.check_method_call(m),
+            ExprKind::Index(i)                            => self.check_index(i),
+            ExprKind::Block(b)                            => self.check_block(b),
+            ExprKind::Let(l)                              => self.check_let(l),
+            ExprKind::If(i)                               => self.check_if(i),
+            ExprKind::While(w)                            => self.check_while(w),
+            ExprKind::For(f)                              => self.check_for(f),
+            ExprKind::New(n)                              => self.check_new(n),
+            ExprKind::Vector(v)                           => self.check_vector(v),
+        };
+        // Guardar el tipo de esta expresión en el side table para el codegen
+        self.expr_types.insert(expr.id, ty.clone());
+        ty
     }
 
     // ── Átomos ────────────────────────────────────────────────────────────────
@@ -603,17 +615,17 @@ impl TypeChecker {
 
     fn check_assign(&mut self, a: &AssignExpr) -> HulkType {
         // self nunca puede ser el target
-        if let Expr::Identifier { name, span } = a.target.as_ref() {
+        if let ExprKind::Identifier { name } = &a.target.kind {
             if name == "self" {
-                self.errors.push(SemanticError::SelfAssignment { span: *span });
+                self.errors.push(SemanticError::SelfAssignment { span: a.target.span });
                 return HulkType::Never;
             }
         }
 
         // Verificar que el target es un lvalue válido
         let is_lvalue = matches!(
-            a.target.as_ref(),
-            Expr::Identifier { .. } | Expr::Access(_) | Expr::Index(_)
+            &a.target.kind,
+            ExprKind::Identifier { .. } | ExprKind::Access(_) | ExprKind::Index(_)
         );
         if !is_lvalue {
             self.errors.push(SemanticError::InvalidLValue { span: a.span });
@@ -693,63 +705,58 @@ impl TypeChecker {
     // ── Llamadas y accesos ────────────────────────────────────────────────────
 
     fn check_call(&mut self, c: &CallExpr) -> HulkType {
-        match c.callee.as_ref() {
-            // ── base() — llamada al constructor del padre ─────────────────────
-            Expr::Base(span) => {
-                match self.current_type.clone() {
+        match &c.callee.kind {
+            // ── base() — llamada al método del padre de mismo nombre ─────────
+            // Según la spec: "base symbol refers to the implementation of the parent"
+            // base() dentro de Knight.name() llama a Person.name()
+            ExprKind::Base => {
+                let (Some(type_name), Some(method_name)) =
+                    (self.current_type.clone(), self.current_method_name.clone())
+                else {
+                    self.errors.push(SemanticError::UndefinedVariable {
+                        name: "base".into(), span: c.callee.span,
+                    });
+                    return HulkType::Never;
+                };
+
+                // Padre del tipo actual
+                let parent_name = match self.types.types.get(&type_name)
+                    .and_then(|t| t.parent.clone())
+                {
+                    Some(p) => p,
                     None => {
                         self.errors.push(SemanticError::UndefinedVariable {
-                            name: "base".into(), span: *span,
+                            name: "base".into(), span: c.callee.span,
                         });
+                        return HulkType::Never;
+                    }
+                };
+
+                // Buscar el método en el padre (o el ancestro más cercano que lo implemente)
+                match self.lookup_method(&parent_name, &method_name) {
+                    None => {
+                        self.errors.push(SemanticError::MethodNotFound {
+                            type_name: parent_name.clone(),
+                            method:    method_name.clone(),
+                            span:      c.callee.span,
+                        });
+                        for arg in &c.args { self.check_expr(arg); }
                         HulkType::Never
                     }
-                    Some(type_name) => {
-                        let parent = self.types.types.get(&type_name)
-                            .and_then(|t| t.parent.clone());
-                        match parent {
-                            None => {
-                                // Tipo sin padre — base() no tiene sentido
-                                self.errors.push(SemanticError::UndefinedVariable {
-                                    name: "base".into(), span: *span,
-                                });
-                                HulkType::Never
-                            }
-                            Some(parent_name) => {
-                                // Verificar args contra el constructor del padre
-                                let ctor = self.types.types.get(&parent_name)
-                                    .map(|t| t.constructor_params.clone())
-                                    .unwrap_or_default();
-
-                                if c.args.len() != ctor.len() {
-                                    self.errors.push(SemanticError::WrongArgCount {
-                                        name:     format!("base ({})", parent_name),
-                                        expected: ctor.len(),
-                                        found:    c.args.len(),
-                                        span:     c.span,
-                                    });
-                                    for arg in &c.args { self.check_expr(arg); }
-                                } else {
-                                    for (arg, (_, expected_ty)) in c.args.iter().zip(ctor.iter()) {
-                                        let arg_ty = self.check_expr(arg);
-                                        if !self.types.conforms(&arg_ty, expected_ty) {
-                                            self.errors.push(SemanticError::TypeMismatch {
-                                                expected: expected_ty.name(),
-                                                found:    arg_ty.name(),
-                                                span:     c.span,
-                                            });
-                                        }
-                                    }
-                                }
-                                HulkType::UserDefined(parent_name)
-                            }
-                        }
+                    Some(sig) => {
+                        // Verificar args contra los params del método del padre
+                        let param_types: Vec<HulkType> =
+                            sig.params.iter().map(|(_, t)| t.clone()).collect();
+                        self.check_call_args(&method_name, &param_types, &c.args, c.span);
+                        // Devolver el tipo de retorno del método (no el tipo del padre)
+                        sig.return_type.clone()
                     }
                 }
             }
 
             // ── Llamada a función / constructor por nombre ────────────────────
             // ── Llamada a función / constructor por nombre ────────────────────
-            Expr::Identifier { name, span } => {
+            ExprKind::Identifier { name } => {
                 let sym = self.symbols.lookup(name).cloned();
                 match sym {
                     Some(s) => match s.kind {
@@ -778,7 +785,7 @@ impl TypeChecker {
                     },
                     None => {
                         self.errors.push(SemanticError::UndefinedFunction {
-                            name: name.clone(), span: *span,
+                            name: name.clone(), span: c.callee.span,
                         });
                         HulkType::Never
                     }
@@ -786,8 +793,8 @@ impl TypeChecker {
             }
 
             // ── Functor / valor de primera clase ─────────────────────────────
-            other => {
-                let callee_ty = self.check_expr(other);
+            _ => {
+                let callee_ty = self.check_expr(c.callee.as_ref());
                 for arg in &c.args { self.check_expr(arg); }
                 if callee_ty.is_never() { HulkType::Never } else { HulkType::Object }
             }
