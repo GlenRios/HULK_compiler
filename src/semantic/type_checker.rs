@@ -934,6 +934,7 @@ impl TypeChecker {
 
         let type_name = match &obj_ty {
             HulkType::UserDefined(n) => n.clone(),
+            HulkType::Protocol(n)    => n.clone(),   // ← nuevo caso
             HulkType::Number         => "Number".into(),
             HulkType::StringT        => "String".into(),
             HulkType::Boolean        => "Boolean".into(),
@@ -951,7 +952,10 @@ impl TypeChecker {
             }
         };
 
-        let sig = self.lookup_method(&type_name, &m.method);
+        let sig = match &obj_ty {
+            HulkType::Protocol(proto_name) => self.lookup_protocol_method(proto_name, &m.method),
+            _ => self.lookup_method(&type_name, &m.method),
+        };
         match sig {
             Some(sig) => {
                 let param_types: Vec<HulkType> = sig.params.iter()
@@ -981,6 +985,24 @@ impl TypeChecker {
                 match &info.parent {
                     Some(parent) => current = parent.clone(),
                     None         => return None,
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+
+    /// Busca un método en la cadena de herencia de protocolos
+    fn lookup_protocol_method(&self, proto_name: &str, method: &str) -> Option<FuncSignature> {
+        let mut current = proto_name.to_string();
+        loop {
+            if let Some(info) = self.types.protocols.get(&current) {
+                if let Some(sig) = info.methods.get(method) {
+                    return Some(sig.clone());
+                }
+                match &info.extends {
+                    Some(parent) => current = parent.clone(),
+                    None => return None,
                 }
             } else {
                 return None;
