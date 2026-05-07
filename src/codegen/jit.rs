@@ -10,6 +10,8 @@ use super::error::{CodegenError, CodegenResult};
 use super::runtime::{
     hulk_print, hulk_rand, hulk_str_from_number,
     hulk_str_concat, hulk_str_concat_space, hulk_str_size,
+    hulk_vec_alloc, hulk_vec_get, hulk_vec_size,
+    hulk_range_alloc, hulk_range_next, hulk_range_current,
 };
 use super::visitor::ProgramVisitor;
 
@@ -39,6 +41,12 @@ pub fn execute_program_jit(program: &Program) -> CodegenResult<f64> {
         ("hulk_str_concat",       hulk_str_concat       as usize),
         ("hulk_str_concat_space", hulk_str_concat_space as usize),
         ("hulk_str_size",         hulk_str_size         as usize),
+        ("hulk_vec_alloc",        hulk_vec_alloc        as usize),
+        ("hulk_vec_get",          hulk_vec_get          as usize),
+        ("hulk_vec_size",         hulk_vec_size         as usize),
+        ("hulk_range_alloc",      hulk_range_alloc      as usize),
+        ("hulk_range_next",       hulk_range_next       as usize),
+        ("hulk_range_current",    hulk_range_current    as usize),
     ];
     for (name, addr) in mappings {
         if let Some(fn_val) = cg.module.get_function(name) {
