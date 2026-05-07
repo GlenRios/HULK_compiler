@@ -5,7 +5,7 @@ use inkwell::types::BasicType;
 use inkwell::values::{BasicMetadataValueEnum, BasicValue};
 
 use crate::parser::ast::{
-    AssignOp, BinaryOp, Expr, ExprKind, Literal, PostfixOp, UnaryOp,
+    AssignOp, BinaryOp, Expr, ExprKind, Literal, PostfixOp, UnaryOp, VectorExpr,
 };
 use crate::semantic::HulkType;
 
@@ -487,6 +487,18 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                         return Ok(CgValue::Number(result));
                     }
 
+                    "range" => {
+                        let start    = self.eval_number(&call.args[0])?;
+                        let end      = self.eval_number(&call.args[1])?;
+                        let alloc_fn = self.require_fn("hulk_range_alloc");
+                        let ptr = self.builder
+                            .build_call(alloc_fn, &[start.into(), end.into()], "range_obj")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                            .try_as_basic_value().left().unwrap()
+                            .into_pointer_value();
+                        return Ok(CgValue::Object(ptr));
+                    }
+
                     _ => {}
                 }
 
@@ -656,7 +668,125 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
             }
 
             // ── Stubs ─────────────────────────────────────────────────────────
-            ExprKind::For(_)        => Err(CodegenError::Unsupported("for aun no implementado".to_string())),
+            ExprKind::For(fe) => {
+                let fn_cur   = self.current_fn()?;
+                let i32_ty   = self.context.i32_type();
+
+                let iter_val = self.visit_expr(&fe.iterable)?;
+                let iter_ty  = self.get_expr_type(&fe.iterable);
+                let is_range = matches!(&iter_ty, HulkType::UserDefined(n) if n == "Range");
+                let iter_ptr = match iter_val {
+                    CgValue::Object(p) | CgValue::Vector(p) => p,
+                    _ => return Err(CodegenError::Unsupported(
+                        "for sobre tipo no iterable".into())),
+                };
+
+                // Para Vector: calcular count antes del loop
+                let vec_count = if !is_range {
+                    let size_fn = self.require_fn("hulk_vec_size");
+                    let s_f64   = self.builder
+                        .build_call(size_fn, &[iter_ptr.into()], "fvsize")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap().into_float_value();
+                    Some(self.builder
+                        .build_float_to_signed_int(s_f64, i32_ty, "fvcount")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?)
+                } else { None };
+
+                let idx_slot = self.create_entry_alloca_for(fn_cur, "for_idx",
+                    &HulkType::Number)?;
+                self.builder.build_store(idx_slot.ptr, self.f64_type().const_float(0.0))
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let cond_bb = self.context.append_basic_block(fn_cur, "for_cond");
+                let body_bb = self.context.append_basic_block(fn_cur, "for_body");
+                let end_bb  = self.context.append_basic_block(fn_cur, "for_end");
+                self.builder.build_unconditional_branch(cond_bb)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                // for_cond
+                self.builder.position_at_end(cond_bb);
+                let cond = if is_range {
+                    let next_fn = self.require_fn("hulk_range_next");
+                    self.builder
+                        .build_call(next_fn, &[iter_ptr.into()], "rnext")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap().into_int_value()
+                } else {
+                    let idx_f64 = self.builder
+                        .build_load(self.f64_type(), idx_slot.ptr, "fidx")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
+                    let idx_i32 = self.builder
+                        .build_float_to_signed_int(idx_f64, i32_ty, "fidx_i32")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    self.builder
+                        .build_int_compare(inkwell::IntPredicate::SLT,
+                            idx_i32, vec_count.unwrap(), "flt")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                };
+                self.builder.build_conditional_branch(cond, body_bb, end_bb)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                // for_body
+                self.builder.position_at_end(body_bb);
+                self.push_scope();
+
+                let elem_val = if is_range {
+                    let curr_fn = self.require_fn("hulk_range_current");
+                    let num = self.builder
+                        .build_call(curr_fn, &[iter_ptr.into()], "rcurr")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap().into_float_value();
+                    CgValue::Number(num)
+                } else {
+                    let idx_f64 = self.builder
+                        .build_load(self.f64_type(), idx_slot.ptr, "fidx2")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
+                    let idx_i32 = self.builder
+                        .build_float_to_signed_int(idx_f64, i32_ty, "fidx2_i32")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    let get_fn = self.require_fn("hulk_vec_get");
+                    let ep = self.builder
+                        .build_call(get_fn,
+                            &[iter_ptr.into(), idx_i32.into(),
+                              i32_ty.const_int(8, false).into()], "fep")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+                    let elem_ty = match self.get_expr_type(&fe.iterable) {
+                        HulkType::Vector(t) => *t,
+                        _                   => HulkType::Object,
+                    };
+                    self.load_place(&Place { ptr: ep, hulk_ty: elem_ty }, &fe.var)?
+                };
+
+                let var_slot = self.create_entry_alloca_for(fn_cur, &fe.var,
+                    &HulkType::Number)?;
+                self.store_place(&var_slot, elem_val)?;
+                self.symbols.insert(fe.var.clone(), var_slot);
+
+                self.visit_expr(&fe.body)?;
+
+                // Para Vector: incrementar índice al final del body
+                if !is_range {
+                    let idx_f64 = self.builder
+                        .build_load(self.f64_type(), idx_slot.ptr, "fidx3")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
+                    let next_idx = self.builder
+                        .build_float_add(idx_f64, self.f64_type().const_float(1.0), "fnext")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    self.builder.build_store(idx_slot.ptr, next_idx)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+
+                self.pop_scope();
+                if !self.is_current_block_terminated() {
+                    self.builder.build_unconditional_branch(cond_bb)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+
+                self.builder.position_at_end(end_bb);
+                Ok(CgValue::Void)
+            }
             ExprKind::New(new_expr) => {
                 let type_name = new_expr.type_name.name().to_string();
                 let ctor_name = format!("__hulk_ctor_{}", type_name);
@@ -707,61 +837,106 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                     unreachable!("MethodCall: receptor no es Object")
                 };
 
-                // 2. tipo estático del objeto — garantizado por el TypeChecker
-                let HulkType::UserDefined(type_name) = self.get_expr_type(&mc.object) else {
-                    unreachable!("MethodCall: tipo no es UserDefined")
-                };
+                // 2. dispatch según tipo estático del receptor
+                match self.get_expr_type(&mc.object) {
 
-                // 3. dispatch: carga vtable_ptr → slot → fn_ptr, firma LLVM y semántica
-                let (fn_ptr, fn_type, sig) =
-                    self.method_dispatch(obj_ptr, &type_name, &mc.method)?;
+                    HulkType::UserDefined(type_name) => {
+                        // ── vtable dispatch (camino existente) ──────────────────
+                        let (fn_ptr, fn_type, sig) =
+                            self.method_dispatch(obj_ptr, &type_name, &mc.method)?;
 
-                // 4. obj_ptr es el primer argumento (self del método)
-                let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> =
-                    vec![obj_ptr.into()];
-                for (i, arg_expr) in mc.args.iter().enumerate() {
-                    let val      = self.visit_expr(arg_expr)?;
-                    let expected = sig.params.get(i)
-                        .map(|(_, t)| t.clone())
-                        .unwrap_or(HulkType::Object);
-                    call_args.push(self.coerce_arg(val, &expected)?);
-                }
+                        let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> =
+                            vec![obj_ptr.into()];
+                        for (i, arg_expr) in mc.args.iter().enumerate() {
+                            let val      = self.visit_expr(arg_expr)?;
+                            let expected = sig.params.get(i)
+                                .map(|(_, t)| t.clone())
+                                .unwrap_or(HulkType::Object);
+                            call_args.push(self.coerce_arg(val, &expected)?);
+                        }
 
-                // 5. llamada indirecta vía vtable (dispatch dinámico)
-                let result = self.builder
-                    .build_indirect_call(fn_type, fn_ptr, &call_args, "method_result")
-                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        let result = self.builder
+                            .build_indirect_call(fn_type, fn_ptr, &call_args, "method_result")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
 
-                // 6. convertir resultado a CgValue según tipo de retorno
-                match &sig.return_type {
-                    HulkType::Number  => Ok(CgValue::Number(
-                        result.try_as_basic_value().left()
-                            .ok_or_else(|| CodegenError::Unsupported(
-                                "método sin retorno usado como valor".into()))?
-                            .into_float_value()
-                    )),
-                    HulkType::Boolean => Ok(CgValue::Bool(
-                        result.try_as_basic_value().left()
-                            .ok_or_else(|| CodegenError::Unsupported(
-                                "método sin retorno usado como valor".into()))?
-                            .into_int_value()
-                    )),
-                    HulkType::StringT => Ok(CgValue::Str(
-                        result.try_as_basic_value().left()
-                            .ok_or_else(|| CodegenError::Unsupported(
-                                "método sin retorno usado como valor".into()))?
-                            .into_pointer_value()
-                    )),
-                    HulkType::Null | HulkType::Unknown => Ok(CgValue::Null),
-                    _ => Ok(CgValue::Object(
-                        result.try_as_basic_value().left()
-                            .ok_or_else(|| CodegenError::Unsupported(
-                                "método sin retorno usado como valor".into()))?
-                            .into_pointer_value()
-                    )),
+                        match &sig.return_type {
+                            HulkType::Number  => Ok(CgValue::Number(
+                                result.try_as_basic_value().left()
+                                    .ok_or_else(|| CodegenError::Unsupported(
+                                        "método sin retorno usado como valor".into()))?
+                                    .into_float_value()
+                            )),
+                            HulkType::Boolean => Ok(CgValue::Bool(
+                                result.try_as_basic_value().left()
+                                    .ok_or_else(|| CodegenError::Unsupported(
+                                        "método sin retorno usado como valor".into()))?
+                                    .into_int_value()
+                            )),
+                            HulkType::StringT => Ok(CgValue::Str(
+                                result.try_as_basic_value().left()
+                                    .ok_or_else(|| CodegenError::Unsupported(
+                                        "método sin retorno usado como valor".into()))?
+                                    .into_pointer_value()
+                            )),
+                            HulkType::Null | HulkType::Unknown => Ok(CgValue::Null),
+                            _ => Ok(CgValue::Object(
+                                result.try_as_basic_value().left()
+                                    .ok_or_else(|| CodegenError::Unsupported(
+                                        "método sin retorno usado como valor".into()))?
+                                    .into_pointer_value()
+                            )),
+                        }
+                    }
+
+                    HulkType::Protocol(proto_name) => {
+                        // ── switch dispatch por type_tag (receptor de tipo protocolo) ──
+                        // Evaluar args ANTES de construir los bloques del switch:
+                        // visit_expr mueve el builder y el switch los necesita completos.
+                        let user_args: Vec<CgValue<'ctx>> = mc.args.iter()
+                            .map(|a| self.visit_expr(a))
+                            .collect::<CodegenResult<_>>()?;
+
+                        // Tipo de retorno del nodo MethodCall completo — ya anotado
+                        let return_ty = self.get_expr_type(expr);
+
+                        self.method_dispatch_protocol(
+                            obj_ptr, &proto_name, &mc.method, &user_args, &return_ty,
+                        )
+                    }
+
+                    _ => unreachable!("MethodCall: tipo receptor inesperado"),
                 }
             }
-            ExprKind::Index(_)      => Err(CodegenError::Unsupported("index aun no implementado".to_string())),
+            ExprKind::Index(ie) => {
+                let coll_val = self.visit_expr(&ie.collection)?;
+                let CgValue::Vector(vec_ptr) = coll_val else {
+                    return Err(CodegenError::Unsupported(
+                        "Index: la colección no es un Vector".into()));
+                };
+
+                let idx_val = self.visit_expr(&ie.index)?;
+                let idx_f64 = self.require_number(idx_val)?;
+                let i32_ty  = self.context.i32_type();
+                let idx_i32 = self.builder
+                    .build_float_to_signed_int(idx_f64, i32_ty, "idx_i32")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let get_fn   = self.require_fn("hulk_vec_get");
+                let elem_ptr = self.builder
+                    .build_call(get_fn,
+                        &[vec_ptr.into(),
+                          idx_i32.into(),
+                          i32_ty.const_int(8, false).into()], "ep")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .try_as_basic_value().left().unwrap()
+                    .into_pointer_value();
+
+                let elem_ty = match self.get_expr_type(&ie.collection) {
+                    HulkType::Vector(t) => *t,
+                    _                   => HulkType::Object,
+                };
+                self.load_place(&Place { ptr: elem_ptr, hulk_ty: elem_ty }, "elem")
+            }
             ExprKind::Is { expr: inner, type_name } => {
                 // 1. evaluar el objeto
                 let obj_val = self.visit_expr(inner)?;
@@ -821,7 +996,211 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                 self.visit_expr(inner)
             }
             ExprKind::Base       => Err(CodegenError::Unsupported("base aun no implementado".to_string())),
-            ExprKind::Vector(_)     => Err(CodegenError::Unsupported("vector aun no implementado".to_string())),
+            ExprKind::Vector(ve) => match ve.as_ref() {
+                VectorExpr::Explicit { elements, .. } => {
+                    let n      = elements.len() as u64;
+                    let i32_ty = self.context.i32_type();
+                    let alloc  = self.require_fn("hulk_vec_alloc");
+                    let get    = self.require_fn("hulk_vec_get");
+
+                    let vec_ptr = self.builder
+                        .build_call(alloc,
+                            &[i32_ty.const_int(n, false).into(),
+                              i32_ty.const_int(8, false).into()], "vec")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap()
+                        .into_pointer_value();
+
+                    for (i, elem_expr) in elements.iter().enumerate() {
+                        let val      = self.visit_expr(elem_expr)?;
+                        let elem_ptr = self.builder
+                            .build_call(get,
+                                &[vec_ptr.into(),
+                                  i32_ty.const_int(i as u64, false).into(),
+                                  i32_ty.const_int(8, false).into()], "ep")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                            .try_as_basic_value().left().unwrap()
+                            .into_pointer_value();
+
+                        match val {
+                            CgValue::Number(f) => {
+                                self.builder.build_store(elem_ptr, f)
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                            }
+                            CgValue::Bool(b) => {
+                                let ext = self.builder
+                                    .build_int_z_extend(b, self.context.i64_type(), "b64")
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                                self.builder.build_store(elem_ptr, ext)
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                            }
+                            CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => {
+                                self.builder.build_store(elem_ptr, p)
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                            }
+                            CgValue::Null => {
+                                self.builder.build_store(elem_ptr, self.ptr_type().const_null())
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                            }
+                            CgValue::Void => {}
+                        }
+                    }
+
+                    Ok(CgValue::Vector(vec_ptr))
+                }
+
+                VectorExpr::Generator { body, var, iterable, .. } => {
+                    let fn_cur  = self.current_fn()?;
+                    let i32_ty  = self.context.i32_type();
+
+                    let iter_val = self.visit_expr(iterable)?;
+                    let iter_ty  = self.get_expr_type(iterable);
+                    let is_range = matches!(&iter_ty, HulkType::UserDefined(n) if n == "Range");
+                    let iter_ptr = match iter_val {
+                        CgValue::Object(p) | CgValue::Vector(p) => p,
+                        _ => return Err(CodegenError::Unsupported(
+                            "generador sobre tipo no iterable".into())),
+                    };
+
+                    // count: Range = end-start (GEP offset 8), Vector = hulk_vec_size
+                    let count_val = if is_range {
+                        let start = self.builder
+                            .build_load(self.f64_type(), iter_ptr, "rstart")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
+                        let end_gep = unsafe {
+                            self.builder
+                                .build_gep(self.context.i8_type(), iter_ptr,
+                                    &[i32_ty.const_int(8, false)], "end_ptr")
+                                .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        };
+                        let end = self.builder
+                            .build_load(self.f64_type(), end_gep, "rend")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
+                        let diff = self.builder.build_float_sub(end, start, "rdiff")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.builder.build_float_to_signed_int(diff, i32_ty, "rcount")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    } else {
+                        let size_fn  = self.require_fn("hulk_vec_size");
+                        let size_f64 = self.builder
+                            .build_call(size_fn, &[iter_ptr.into()], "vsize")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                            .try_as_basic_value().left().unwrap().into_float_value();
+                        self.builder.build_float_to_signed_int(size_f64, i32_ty, "vcount")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    };
+
+                    let alloc_fn   = self.require_fn("hulk_vec_alloc");
+                    let result_ptr = self.builder
+                        .build_call(alloc_fn,
+                            &[count_val.into(), i32_ty.const_int(8, false).into()], "gen_vec")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+
+                    let idx_slot = self.create_entry_alloca_for(fn_cur, "gen_idx",
+                        &HulkType::Number)?;
+                    self.builder.build_store(idx_slot.ptr, self.f64_type().const_float(0.0))
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                    let cond_bb = self.context.append_basic_block(fn_cur, "gen_cond");
+                    let body_bb = self.context.append_basic_block(fn_cur, "gen_body");
+                    let end_bb  = self.context.append_basic_block(fn_cur, "gen_end");
+                    self.builder.build_unconditional_branch(cond_bb)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                    // gen_cond: idx < count
+                    self.builder.position_at_end(cond_bb);
+                    let idx_f64 = self.builder
+                        .build_load(self.f64_type(), idx_slot.ptr, "idx_f64")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
+                    let idx_i32 = self.builder
+                        .build_float_to_signed_int(idx_f64, i32_ty, "idx_i32")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    let cond = self.builder
+                        .build_int_compare(inkwell::IntPredicate::SLT, idx_i32, count_val, "gen_lt")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    self.builder.build_conditional_branch(cond, body_bb, end_bb)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                    // gen_body
+                    self.builder.position_at_end(body_bb);
+                    self.push_scope();
+
+                    let elem_val = if is_range {
+                        let next_fn = self.require_fn("hulk_range_next");
+                        self.builder.build_call(next_fn, &[iter_ptr.into()], "")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        let curr_fn = self.require_fn("hulk_range_current");
+                        let num = self.builder
+                            .build_call(curr_fn, &[iter_ptr.into()], "rcurr")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                            .try_as_basic_value().left().unwrap().into_float_value();
+                        CgValue::Number(num)
+                    } else {
+                        let get_fn = self.require_fn("hulk_vec_get");
+                        let ep = self.builder
+                            .build_call(get_fn,
+                                &[iter_ptr.into(), idx_i32.into(),
+                                  i32_ty.const_int(8, false).into()], "ep")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?
+                            .try_as_basic_value().left().unwrap().into_pointer_value();
+                        let elem_ty = match &iter_ty {
+                            HulkType::Vector(t) => *t.clone(),
+                            _                   => HulkType::Object,
+                        };
+                        self.load_place(&Place { ptr: ep, hulk_ty: elem_ty }, var)?
+                    };
+
+                    let var_slot = self.create_entry_alloca_for(fn_cur, var,
+                        &HulkType::Number)?;
+                    self.store_place(&var_slot, elem_val)?;
+                    self.symbols.insert(var.clone(), var_slot);
+
+                    // evaluar body y almacenar en result_ptr[idx]
+                    let body_val = self.visit_expr(body)?;
+                    let get_fn   = self.require_fn("hulk_vec_get");
+                    let dest_ptr = self.builder
+                        .build_call(get_fn,
+                            &[result_ptr.into(), idx_i32.into(),
+                              i32_ty.const_int(8, false).into()], "dp")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+                    match body_val {
+                        CgValue::Number(f) => {
+                            self.builder.build_store(dest_ptr, f)
+                                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        }
+                        CgValue::Bool(b) => {
+                            let ext = self.builder
+                                .build_int_z_extend(b, self.context.i64_type(), "b64")
+                                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                            self.builder.build_store(dest_ptr, ext)
+                                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        }
+                        CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => {
+                            self.builder.build_store(dest_ptr, p)
+                                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        }
+                        _ => {}
+                    }
+
+                    // incrementar índice
+                    let next_idx = self.builder
+                        .build_float_add(idx_f64, self.f64_type().const_float(1.0), "next_idx")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    self.builder.build_store(idx_slot.ptr, next_idx)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                    self.pop_scope();
+                    if !self.is_current_block_terminated() {
+                        self.builder.build_unconditional_branch(cond_bb)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    }
+
+                    self.builder.position_at_end(end_bb);
+                    Ok(CgValue::Vector(result_ptr))
+                }
+            },
         }
     }
 }
