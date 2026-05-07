@@ -309,9 +309,7 @@ impl<'ctx> DeclVisitor<'ctx> for CodegenContext<'ctx> {
         match decl {
             Decl::Function(func) => self.lower_function_decl(func),
             Decl::Type(td) => self.lower_type_decl(td),
-            Decl::Protocol(_) => Err(CodegenError::Unsupported(
-                "codegen de ProtocolDecl aun no implementado".to_string(),
-            )),
+            Decl::Protocol(_) => Ok(()),
         }
     }
 }
