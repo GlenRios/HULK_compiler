@@ -30,7 +30,10 @@ impl<'ctx> ProgramVisitor<'ctx> for CodegenContext<'ctx> {
         self.push_scope();
 
         let entry_value = self.visit_expr(&program.entry)?;
-        let ret = self.require_number(entry_value)?;
+        let ret = match entry_value {
+            super::value::CgValue::Void => self.f64_type().const_float(0.0),
+            other => self.require_number(other)?,
+        };
 
         if !self.is_current_block_terminated() {
             self.builder
