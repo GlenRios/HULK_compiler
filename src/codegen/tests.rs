@@ -327,4 +327,248 @@ mod codegen_tests {
         );
         assert!(approx(run(e), 10.0));
     }
+
+    // ── Vectores, Range y For ─────────────────────────────────────────────────
+
+    fn id(name: &str) -> Expr { Expr::identifier(name, d()) }
+
+    fn vec_explicit(elems: Vec<Expr>) -> Expr {
+        use crate::parser::ast::{ExprKind, VectorExpr};
+        Expr::new(ExprKind::Vector(Box::new(VectorExpr::explicit(elems, d()))), d())
+    }
+
+    fn vec_gen(body: Expr, var: &str, iterable: Expr) -> Expr {
+        use crate::parser::ast::{ExprKind, VectorExpr};
+        Expr::new(ExprKind::Vector(Box::new(VectorExpr::generator(body, var, iterable, d()))), d())
+    }
+
+    fn vec_index(coll: Expr, idx: Expr) -> Expr { Expr::index(coll, idx, d()) }
+
+    fn range_call(start: Expr, end: Expr) -> Expr { call("range", vec![start, end]) }
+
+    fn for_loop(var: &str, iterable: Expr, body: Expr) -> Expr {
+        Expr::for_expr(var, iterable, body, d())
+    }
+
+    fn let1(var: &str, val: Expr, body: Expr) -> Expr {
+        use crate::parser::ast::LetBinding;
+        Expr::let_expr(vec![LetBinding::new(var, None, val, d())], body, d())
+    }
+
+    #[test]
+    fn vector_explicit_index() {
+        // [10, 20, 30][1]  →  20
+        let e = vec_index(
+            vec_explicit(vec![num("10"), num("20"), num("30")]),
+            num("1"));
+        assert!(approx(run(e), 20.0));
+    }
+
+    #[test]
+    fn vector_explicit_first_element() {
+        // [42, 0, 0][0]  →  42
+        let e = vec_index(
+            vec_explicit(vec![num("42"), num("0"), num("0")]),
+            num("0"));
+        assert!(approx(run(e), 42.0));
+    }
+
+    #[test]
+    fn vector_explicit_last_element() {
+        // [1, 2, 99][2]  →  99
+        let e = vec_index(
+            vec_explicit(vec![num("1"), num("2"), num("99")]),
+            num("2"));
+        assert!(approx(run(e), 99.0));
+    }
+
+    #[test]
+    fn for_range_runs_body() {
+        // for (x in range(0, 5)) 0  →  0.0 (no crash)
+        let e = for_loop("x", range_call(num("0"), num("5")), num("0"));
+        assert!(approx(run(e), 0.0));
+    }
+
+    #[test]
+    fn for_range_accumulates_via_let() {
+        // let total = 0 in { for (x in range(1,4)) total := total + x; total }  →  6
+        use crate::parser::ast::AssignOp;
+        let e = let1("total", num("0"),
+            Expr::block(vec![
+                for_loop("x", range_call(num("1"), num("4")),
+                    Expr::assign(AssignOp::PlusAssign, id("total"), id("x"), d())),
+                id("total"),
+            ], d()));
+        assert!(approx(run(e), 6.0));
+    }
+
+    #[test]
+    fn vector_generator_first_element() {
+        // [x^2 | x in range(1, 4)][0]  →  1  (1^2)
+        let e = vec_index(
+            vec_gen(pow(id("x"), num("2")), "x", range_call(num("1"), num("4"))),
+            num("0"));
+        assert!(approx(run(e), 1.0));
+    }
+
+    #[test]
+    fn vector_generator_second_element() {
+        // [x^2 | x in range(1, 4)][1]  →  4  (2^2)
+        let e = vec_index(
+            vec_gen(pow(id("x"), num("2")), "x", range_call(num("1"), num("4"))),
+            num("1"));
+        assert!(approx(run(e), 4.0));
+    }
+
+    #[test]
+    fn vector_generator_third_element() {
+        // [x^2 | x in range(1, 4)][2]  →  9  (3^2)
+        let e = vec_index(
+            vec_gen(pow(id("x"), num("2")), "x", range_call(num("1"), num("4"))),
+            num("2"));
+        assert!(approx(run(e), 9.0));
+    }
+
+    #[test]
+    fn vector_generator_from_vector() {
+        // let v = [10, 20, 30] in [x*2 | x in v][2]  →  60
+        let e = let1("v",
+            vec_explicit(vec![num("10"), num("20"), num("30")]),
+            vec_index(
+                vec_gen(
+                    Expr::binary(BinaryOp::Mul, id("x"), num("2"), d()),
+                    "x", id("v")),
+                num("2")));
+        assert!(approx(run(e), 60.0));
+    }
+
+    // ── Protocolos ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn protocol_dispatch_single_conformer() {
+        use crate::parser::ast::{
+            Decl, ProtocolDecl, TypeDecl, TypeMember, AttributeDef, MethodDef,
+            MethodSignature, Param, LetBinding, ExprKind, NewExpr, TypeName,
+        };
+
+        // protocol Measurable { measure(): Number; }
+        let proto = Decl::Protocol(ProtocolDecl::new(
+            "Measurable",
+            None,
+            vec![MethodSignature::new("measure", vec![], TypeName::simple("Number", d()), d())],
+            d(),
+        ));
+
+        // type MBox(w: Number) { w = w; measure(): Number => self.w; }
+        let typ = Decl::Type(TypeDecl::new(
+            "MBox",
+            vec![Param::new("w", Some(TypeName::simple("Number", d())), d())],
+            None,
+            vec![],
+            vec![
+                TypeMember::Attribute(AttributeDef::new("w", None, id("w"), d())),
+                TypeMember::Method(MethodDef::new(
+                    "measure",
+                    vec![],
+                    Some(TypeName::simple("Number", d())),
+                    Expr::access(id("self"), "w", d()),
+                    d(),
+                )),
+            ],
+            d(),
+        ));
+
+        // let b: Measurable = new MBox(42) in b.measure()  →  42
+        let new_mbox = Expr::new(
+            ExprKind::New(Box::new(NewExpr::new(TypeName::simple("MBox", d()), vec![num("42")], d()))),
+            d(),
+        );
+        let entry = Expr::let_expr(
+            vec![LetBinding::new("b", Some(TypeName::simple("Measurable", d())), new_mbox, d())],
+            Expr::method_call(id("b"), "measure", vec![], d()),
+            d(),
+        );
+
+        let prog = Program::new(vec![proto, typ], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 42.0));
+    }
+
+    #[test]
+    fn protocol_dispatch_multiple_conformers() {
+        use crate::parser::ast::{
+            Decl, ProtocolDecl, TypeDecl, TypeMember, AttributeDef, MethodDef,
+            MethodSignature, Param, LetBinding, ExprKind, NewExpr, TypeName,
+        };
+
+        // protocol Shape { area(): Number; }
+        let proto = Decl::Protocol(ProtocolDecl::new(
+            "Shape",
+            None,
+            vec![MethodSignature::new("area", vec![], TypeName::simple("Number", d()), d())],
+            d(),
+        ));
+
+        // type Square(s: Number) { s = s; area(): Number => self.s * self.s; }
+        let square_decl = Decl::Type(TypeDecl::new(
+            "Square",
+            vec![Param::new("s", Some(TypeName::simple("Number", d())), d())],
+            None,
+            vec![],
+            vec![
+                TypeMember::Attribute(AttributeDef::new("s", None, id("s"), d())),
+                TypeMember::Method(MethodDef::new(
+                    "area",
+                    vec![],
+                    Some(TypeName::simple("Number", d())),
+                    Expr::binary(BinaryOp::Mul,
+                        Expr::access(id("self"), "s", d()),
+                        Expr::access(id("self"), "s", d()),
+                        d()),
+                    d(),
+                )),
+            ],
+            d(),
+        ));
+
+        // type Rect(w: Number, h: Number) { w = w; h = h; area(): Number => self.w * self.h; }
+        let rect_decl = Decl::Type(TypeDecl::new(
+            "Rect",
+            vec![
+                Param::new("w", Some(TypeName::simple("Number", d())), d()),
+                Param::new("h", Some(TypeName::simple("Number", d())), d()),
+            ],
+            None,
+            vec![],
+            vec![
+                TypeMember::Attribute(AttributeDef::new("w", None, id("w"), d())),
+                TypeMember::Attribute(AttributeDef::new("h", None, id("h"), d())),
+                TypeMember::Method(MethodDef::new(
+                    "area",
+                    vec![],
+                    Some(TypeName::simple("Number", d())),
+                    Expr::binary(BinaryOp::Mul,
+                        Expr::access(id("self"), "w", d()),
+                        Expr::access(id("self"), "h", d()),
+                        d()),
+                    d(),
+                )),
+            ],
+            d(),
+        ));
+
+        // let shape: Shape = new Square(5) in shape.area()  →  25
+        let new_square = Expr::new(
+            ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Square", d()), vec![num("5")], d()))),
+            d(),
+        );
+        let entry = Expr::let_expr(
+            vec![LetBinding::new("shape", Some(TypeName::simple("Shape", d())), new_square, d())],
+            Expr::method_call(id("shape"), "area", vec![], d()),
+            d(),
+        );
+
+        // Ambos tipos registrados → switch con 2 arms; en runtime Square(5) → 25
+        let prog = Program::new(vec![proto, square_decl, rect_decl], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 25.0));
+    }
 }

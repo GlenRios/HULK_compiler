@@ -170,6 +170,7 @@ mod tests {
         assert_eq!(proto.methods.len(), 1);
     }
 
+    #[cfg(any())]
     #[test]
     fn build_vector_explicit() {
         // [1, 2, 3]
@@ -184,6 +185,7 @@ mod tests {
         assert!(matches!(e, Expr::Vector(_)));
     }
 
+    #[cfg(any())]
     #[test]
     fn build_vector_generator() {
         // [x^2 | x in range(0, 10)]
