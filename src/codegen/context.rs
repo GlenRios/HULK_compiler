@@ -6,7 +6,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::{BasicTypeEnum, FloatType, FunctionType, IntType, PointerType};
-use inkwell::values::{FloatValue, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{BasicValue, BasicValueEnum, BasicMetadataValueEnum, FloatValue, FunctionValue, IntValue, PointerValue};
 use inkwell::FloatPredicate;
 
 use crate::semantic::{HulkType, TypeHierarchy, SemanticOutput};
@@ -413,5 +413,132 @@ impl<'ctx> CodegenContext<'ctx> {
             CgValue::Void      => Err(CodegenError::Unsupported("void en contexto booleano".to_string())),
             _ => Err(CodegenError::Unsupported("tipo no booleano en contexto booleano".to_string())),
         }
+    }
+
+    /// Dispatch dinámico para receptores con tipo protocolo.
+    ///
+    /// Carga el type_tag del objeto en runtime y genera un switch de LLVM
+    /// con un case por cada tipo concreto que conforma el protocolo.
+    /// Cada case llama directamente a la implementación concreta del método.
+    /// Los resultados se mergean con un phi node.
+    pub fn method_dispatch_protocol(
+        &mut self,
+        obj_ptr:     PointerValue<'ctx>,
+        proto_name:  &str,
+        method_name: &str,
+        user_args:   &[CgValue<'ctx>],
+        return_ty:   &HulkType,
+    ) -> CodegenResult<CgValue<'ctx>> {
+        // 1. Tipos que conforman el protocolo y tienen layout LLVM registrado
+        let all_names: Vec<String> = self.type_registry.layouts.keys().cloned().collect();
+        let conforming: Vec<(String, u32)> = all_names.iter()
+            .filter(|name| self.type_hierarchy.conforms_protocol(name, proto_name))
+            .map(|name| (name.clone(), self.type_registry.layouts[name].type_tag))
+            .collect();
+
+        // 2. Firma de parámetros del primer tipo conformante — todos son compatibles
+        //    (el semantic checker garantizó eso al verificar conformancia)
+        let param_sig: Option<FuncSignature> = conforming.first()
+            .and_then(|(name, _)| {
+                let mut cur = name.clone();
+                loop {
+                    if let Some(ti) = self.type_hierarchy.types.get(&cur) {
+                        if let Some(sig) = ti.methods.get(method_name) {
+                            return Some(sig.clone());
+                        }
+                        match &ti.parent {
+                            Some(p) => cur = p.clone(),
+                            None    => return None,
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+            });
+
+        // 3. Cargar type_tag desde obj_ptr[0] — igual que en el operador is
+        let i32_ty = self.context.i32_type();
+        let runtime_tag = self.builder
+            .build_load(i32_ty, obj_ptr, "proto_tag")
+            .map_err(|e| CodegenError::Builder(e.to_string()))?
+            .into_int_value();
+
+        // 4. Crear bloques: uno por tipo conformante + default (unreachable) + merge
+        let cur_fn = self.current_function
+            .ok_or_else(|| CodegenError::Unsupported(
+                "method_dispatch_protocol sin función activa".into()))?;
+        let default_bb = self.context.append_basic_block(cur_fn, "proto_unreachable");
+        let merge_bb   = self.context.append_basic_block(cur_fn, "proto_merge");
+
+        let case_blocks: Vec<(IntValue<'ctx>, BasicBlock<'ctx>, String)> =
+            conforming.iter().map(|(name, tag)| {
+                let bb  = self.context.append_basic_block(cur_fn, &format!("proto_case_{}", name));
+                let val = i32_ty.const_int(*tag as u64, false);
+                (val, bb, name.clone())
+            }).collect();
+
+        // 5. Emitir switch — termina el bloque actual (es un terminator de LLVM)
+        let arms: Vec<(IntValue<'ctx>, BasicBlock<'ctx>)> =
+            case_blocks.iter().map(|(v, bb, _)| (*v, *bb)).collect();
+        self.builder
+            .build_switch(runtime_tag, default_bb, &arms)
+            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+        // 6. Default → unreachable (conformancia garantizada por el semantic checker)
+        self.builder.position_at_end(default_bb);
+        self.builder.build_unreachable()
+            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+        // 7. Llenar cada case: llamada directa al método concreto + salto a merge
+        let mut phi_incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock<'ctx>)> = vec![];
+
+        for (_, case_bb, type_name) in &case_blocks {
+            self.builder.position_at_end(*case_bb);
+
+            let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![obj_ptr.into()];
+            for (i, arg_val) in user_args.iter().enumerate() {
+                let expected = param_sig.as_ref()
+                    .and_then(|s| s.params.get(i))
+                    .map(|(_, t)| t.clone())
+                    .unwrap_or(HulkType::Object);
+                call_args.push(self.coerce_arg(arg_val.clone(), &expected)?);
+            }
+
+            // Llamada directa (no indirecta) a la implementación concreta del tipo
+            let fn_name = format!("__hulk_method_{}_{}", type_name, method_name);
+            let fn_val  = self.module.get_function(&fn_name)
+                .ok_or_else(|| CodegenError::Unsupported(
+                    format!("función '{}' no encontrada en módulo", fn_name)))?;
+
+            let call   = self.builder
+                .build_call(fn_val, &call_args, "proto_call")
+                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+            let result = call.try_as_basic_value().left()
+                .ok_or_else(|| CodegenError::Unsupported(
+                    "método de protocolo sin valor de retorno".into()))?;
+
+            phi_incoming.push((result, *case_bb));
+            self.builder
+                .build_unconditional_branch(merge_bb)
+                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+        }
+
+        // 8. Phi node en merge — el tipo viene de return_ty (anotado por el semantic checker)
+        self.builder.position_at_end(merge_bb);
+        let llvm_ty = self.hulk_type_to_llvm(return_ty);
+        let phi = self.builder
+            .build_phi(llvm_ty, "proto_ret")
+            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+        for (val, bb) in &phi_incoming {
+            phi.add_incoming(&[(&*val as &dyn BasicValue<'ctx>, *bb)]);
+        }
+
+        let bv = phi.as_basic_value();
+        Ok(match return_ty {
+            HulkType::Number  => CgValue::Number(bv.into_float_value()),
+            HulkType::Boolean => CgValue::Bool(bv.into_int_value()),
+            HulkType::StringT => CgValue::Str(bv.into_pointer_value()),
+            _                 => CgValue::Object(bv.into_pointer_value()),
+        })
     }
 }
