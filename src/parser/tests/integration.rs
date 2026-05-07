@@ -317,7 +317,7 @@ fn power_right_associative() {
 #[test]
 fn unary_negation() {
     let p = parse("-42;");
-    match entry(&p) {
+    match &entry(&p).kind {
         ExprKind::Unary(u) => {
             assert_eq!(u.op, UnaryOp::Neg);
             assert_eq!(as_number(&u.operand), "42");
@@ -600,7 +600,7 @@ fn chained_method_calls() {
 #[test]
 fn index_access() {
     let p = parse("v[0];");
-    match entry(&p) {
+    match &entry(&p).kind {
         ExprKind::Index(i) => {
             assert_eq!(as_ident(&i.collection), "v");
             assert_eq!(as_number(&i.index), "0");
@@ -616,7 +616,7 @@ fn index_access() {
 #[test]
 fn new_no_args() {
     let p = parse("new Point();");
-    match entry(&p) {
+    match &entry(&p).kind {
         ExprKind::New(n) => {
             assert_eq!(n.type_name.name(), "Point");
             assert!(n.args.is_empty());
@@ -628,7 +628,7 @@ fn new_no_args() {
 #[test]
 fn new_with_args() {
     let p = parse("new Point(3, 4);");
-    match entry(&p) {
+    match &entry(&p).kind {
         ExprKind::New(n) => {
             assert_eq!(n.type_name.name(), "Point");
             assert_eq!(n.args.len(), 2);
@@ -646,7 +646,7 @@ fn new_with_args() {
 #[test]
 fn vector_empty() {
     let p = parse("[];");
-    match entry(&p) {
+    match &entry(&p).kind {
         ExprKind::Vector(v) => match v.as_ref() {
             VectorExpr::Explicit { elements, .. } => assert!(elements.is_empty()),
             _ => panic!("esperaba Explicit"),
@@ -658,7 +658,7 @@ fn vector_empty() {
 #[test]
 fn vector_explicit() {
     let p = parse("[1, 2, 3];");
-    match entry(&p) {
+    match &entry(&p).kind {
         ExprKind::Vector(v) => match v.as_ref() {
             VectorExpr::Explicit { elements, .. } => {
                 assert_eq!(elements.len(), 3);
@@ -913,7 +913,7 @@ fn program_for_with_range() {
     let p = parse(src);
     let (bindings, body) = as_let(entry(&p));
     // binding[0].value es un vector explícito
-    match bindings[0].value.as_ref() {
+    match &bindings[0].value.kind {
         ExprKind::Vector(v) => match v.as_ref() {
             VectorExpr::Explicit { elements, .. } => assert_eq!(elements.len(), 5),
             _ => panic!("esperaba Explicit"),

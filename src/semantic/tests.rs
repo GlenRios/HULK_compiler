@@ -9,7 +9,7 @@
 //   check_err!(program, Kind)  → debe producir al menos un error de ese Kind
 
 use crate::parser::ast::{
-    Decl, Expr, FuncDecl, Param, Program, Span,
+    Decl, Expr, ExprKind, FuncDecl, Param, Program, Span,
     TypeDecl, TypeMember, AttributeDef, MethodDef,
     ProtocolDecl, MethodSignature,
     BinaryOp, UnaryOp, AssignOp, PostfixOp,
@@ -86,23 +86,23 @@ fn assign(target: Expr, value: Expr) -> Expr {
 }
 
 fn new_(type_name: &str, args: Vec<Expr>) -> Expr {
-    Expr::New(Box::new(NewExpr::new(TypeName::simple(type_name, d()), args, d())))
+    Expr::new(ExprKind::New(Box::new(NewExpr::new(TypeName::simple(type_name, d()), args, d()))), d())
 }
 
 fn is_expr(e: Expr, t: &str) -> Expr {
-    Expr::Is { expr: Box::new(e), type_name: TypeName::simple(t, d()), span: d() }
+    Expr::new(ExprKind::Is { expr: Box::new(e), type_name: TypeName::simple(t, d()) }, d())
 }
 
 fn as_expr(e: Expr, t: &str) -> Expr {
-    Expr::As { expr: Box::new(e), type_name: TypeName::simple(t, d()), span: d() }
+    Expr::new(ExprKind::As { expr: Box::new(e), type_name: TypeName::simple(t, d()) }, d())
 }
 
 fn vec_explicit(elems: Vec<Expr>) -> Expr {
-    Expr::Vector(Box::new(VectorExpr::explicit(elems, d())))
+    Expr::new(ExprKind::Vector(Box::new(VectorExpr::explicit(elems, d()))), d())
 }
 
 fn vec_gen(body: Expr, var: &str, iter: Expr) -> Expr {
-    Expr::Vector(Box::new(VectorExpr::generator(body, var, iter, d())))
+    Expr::new(ExprKind::Vector(Box::new(VectorExpr::generator(body, var, iter, d()))), d())
 }
 
 fn ty(name: &str) -> TypeName { TypeName::simple(name, d()) }
@@ -385,9 +385,9 @@ fn postfix_increment_number_ok() {
     let prog = program_with_decls(
         vec![],
         let_(vec![("x", None, num("0"))],
-            Expr::Postfix(Box::new(
+            Expr::new(ExprKind::Postfix(Box::new(
                 crate::parser::ast::PostfixExpr::new(PostfixOp::Increment, id("x"), d())
-            )))
+            )), d()))
     );
     check_ok!(prog);
 }
@@ -395,9 +395,9 @@ fn postfix_increment_number_ok() {
 #[test]
 fn postfix_on_bool_error() {
     check_err!(
-        simple_program(Expr::Postfix(Box::new(
+        simple_program(Expr::new(ExprKind::Postfix(Box::new(
             crate::parser::ast::PostfixExpr::new(PostfixOp::Increment, bool_(true), d())
-        ))),
+        )), d())),
         SemanticError::InvalidOperandType { .. }
     );
 }
@@ -1147,9 +1147,9 @@ fn vector_index_ok() {
     check_ok!(simple_program(
         let_(
             vec![("v", None, vec_explicit(vec![num("1"), num("2"), num("3")]))],
-            Expr::Index(Box::new(
+            Expr::new(ExprKind::Index(Box::new(
                 crate::parser::ast::IndexExpr::new(id("v"), num("0"), d())
-            ))
+            )), d())
         )
     ));
 }
@@ -1161,9 +1161,9 @@ fn vector_index_non_number_error() {
         simple_program(
             let_(
                 vec![("v", None, vec_explicit(vec![num("1")]))],
-                Expr::Index(Box::new(
+                Expr::new(ExprKind::Index(Box::new(
                     crate::parser::ast::IndexExpr::new(id("v"), str_("cero"), d())
-                ))
+                )), d())
             )
         ),
         SemanticError::TypeMismatch { .. }
@@ -1176,9 +1176,9 @@ fn index_non_vector_error() {
         simple_program(
             let_(
                 vec![("x", None, num("5"))],
-                Expr::Index(Box::new(
+                Expr::new(ExprKind::Index(Box::new(
                     crate::parser::ast::IndexExpr::new(id("x"), num("0"), d())
-                ))
+                )), d())
             )
         ),
         SemanticError::TypeMismatch { .. }
@@ -1270,7 +1270,7 @@ fn base_in_method_ok() {
                 "B", vec![], Some("A"),
                 vec![method(
                     "val", vec![], Some(ty("Number")),
-                    add(Expr::Base(d()), num("1")),
+                    add(Expr::new(ExprKind::Base, d()), num("1")),
                 )],
             ),
         ],
@@ -1288,7 +1288,7 @@ fn base_in_method_ok() {
 fn base_outside_type_error() {
     // Usar base() fuera de un tipo
     check_err!(
-        simple_program(Expr::Base(d())),
+        simple_program(Expr::new(ExprKind::Base, d())),
         SemanticError::UndefinedVariable { .. }
     );
 }
@@ -1616,11 +1616,11 @@ fn base_call_in_constructor_ok() {
                 vec![method(
                     "init", vec![], None,
                     // base(name) — llama al constructor del padre
-                    Expr::Call(Box::new(crate::parser::ast::CallExpr::new(
-                        Expr::Base(d()),
+                    Expr::new(ExprKind::Call(Box::new(crate::parser::ast::CallExpr::new(
+                        Expr::new(ExprKind::Base, d()),
                         vec![id("name")],
                         d(),
-                    ))),
+                    ))), d()),
                 )],
             ),
         ],
@@ -1648,11 +1648,11 @@ fn base_call_wrong_arg_count_error() {
                 vec![method(
                     "bad_init", vec![], None,
                     // base() sin args cuando Animal espera 1
-                    Expr::Call(Box::new(crate::parser::ast::CallExpr::new(
-                        Expr::Base(d()),
+                    Expr::new(ExprKind::Call(Box::new(crate::parser::ast::CallExpr::new(
+                        Expr::new(ExprKind::Base, d()),
                         vec![],  // ← faltan args
                         d(),
-                    ))),
+                    ))), d()),
                 )],
             ),
         ],
@@ -1665,11 +1665,11 @@ fn base_call_wrong_arg_count_error() {
 fn base_call_outside_type_error() {
     // base() fuera de un tipo → UndefinedVariable
     check_err!(
-        simple_program(Expr::Call(Box::new(crate::parser::ast::CallExpr::new(
-            Expr::Base(d()),
+        simple_program(Expr::new(ExprKind::Call(Box::new(crate::parser::ast::CallExpr::new(
+            Expr::new(ExprKind::Base, d()),
             vec![],
             d(),
-        )))),
+        ))), d())),
         SemanticError::UndefinedVariable { .. }
     );
 }
