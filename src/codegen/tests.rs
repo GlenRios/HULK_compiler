@@ -466,7 +466,7 @@ mod codegen_tests {
             None,
             vec![],
             vec![
-                TypeMember::Attribute(AttributeDef::new("w", None, id("w"), d())),
+                TypeMember::Attribute(AttributeDef::new("w", Some(TypeName::simple("Number", d())), id("w"), d())),
                 TypeMember::Method(MethodDef::new(
                     "measure",
                     vec![],
@@ -515,7 +515,7 @@ mod codegen_tests {
             None,
             vec![],
             vec![
-                TypeMember::Attribute(AttributeDef::new("s", None, id("s"), d())),
+                TypeMember::Attribute(AttributeDef::new("s", Some(TypeName::simple("Number", d())), id("s"), d())),
                 TypeMember::Method(MethodDef::new(
                     "area",
                     vec![],
@@ -540,8 +540,8 @@ mod codegen_tests {
             None,
             vec![],
             vec![
-                TypeMember::Attribute(AttributeDef::new("w", None, id("w"), d())),
-                TypeMember::Attribute(AttributeDef::new("h", None, id("h"), d())),
+                TypeMember::Attribute(AttributeDef::new("w", Some(TypeName::simple("Number", d())), id("w"), d())),
+                TypeMember::Attribute(AttributeDef::new("h", Some(TypeName::simple("Number", d())), id("h"), d())),
                 TypeMember::Method(MethodDef::new(
                     "area",
                     vec![],
