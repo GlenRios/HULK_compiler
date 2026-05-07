@@ -47,15 +47,15 @@ fn real_fibonacci() {
     assert_eq!(f.params[0].name, "n");
 
     // El cuerpo es un if
-    assert!(matches!(f.body.as_ref(), Expr::If(_)));
+    assert!(matches!(f.body.as_ref(), Expr { kind: ExprKind::If(_), .. }));
 
     // La entrada es print(fib(10))
-    let Expr::Call(outer) = p.entry.as_ref() else { panic!("entry debe ser Call") };
-    let Expr::Identifier { name, .. } = outer.callee.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Call(outer), .. } = p.entry.as_ref() else { panic!("entry debe ser Call") };
+    let Expr { kind: ExprKind::Identifier { name }, .. } = outer.callee.as_ref() else { panic!() };
     assert_eq!(name, "print");
     assert_eq!(outer.args.len(), 1);
-    let Expr::Call(inner) = &outer.args[0] else { panic!("arg debe ser Call") };
-    let Expr::Identifier { name: fname, .. } = inner.callee.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Call(inner), .. } = &outer.args[0] else { panic!("arg debe ser Call") };
+    let Expr { kind: ExprKind::Identifier { name: fname }, .. } = inner.callee.as_ref() else { panic!() };
     assert_eq!(fname, "fib");
 }
 
@@ -97,12 +97,12 @@ fn real_counter_type() {
     assert_eq!(meths, 3);
 
     // La entrada es un let con new Counter(0)
-    let Expr::Let(let_e) = p.entry.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(let_e), .. } = p.entry.as_ref() else { panic!() };
     assert_eq!(let_e.bindings[0].name, "c");
-    assert!(matches!(let_e.bindings[0].value.as_ref(), Expr::New(_)));
+    assert!(matches!(let_e.bindings[0].value.as_ref(), Expr { kind: ExprKind::New(_), .. }));
 
     // El body del let es un bloque con 5 expresiones
-    let Expr::Block(block) = let_e.body.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Block(block), .. } = let_e.body.as_ref() else { panic!() };
     assert_eq!(block.body.len(), 5);
 }
 
@@ -152,9 +152,9 @@ fn real_inheritance() {
     assert_eq!(rect.parent.as_ref().unwrap().name(), "Shape");
 
     // La entrada es un let anidado
-    let Expr::Let(outer_let) = p.entry.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(outer_let), .. } = p.entry.as_ref() else { panic!() };
     assert_eq!(outer_let.bindings[0].name, "c");
-    let Expr::Let(inner_let) = outer_let.body.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(inner_let), .. } = outer_let.body.as_ref() else { panic!() };
     assert_eq!(inner_let.bindings[0].name, "r");
 }
 
@@ -179,18 +179,18 @@ fn real_higher_order() {
     assert_eq!(names, vec!["apply", "double", "square"]);
 
     // entry: let result = apply(...) in print(result)
-    let Expr::Let(let_e) = p.entry.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(let_e), .. } = p.entry.as_ref() else { panic!() };
     assert_eq!(let_e.bindings[0].name, "result");
 
     // El valor del binding es apply(double, apply(square, 3))
-    let Expr::Call(outer_call) = let_e.bindings[0].value.as_ref() else { panic!() };
-    let Expr::Identifier { name, .. } = outer_call.callee.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Call(outer_call), .. } = let_e.bindings[0].value.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Identifier { name }, .. } = outer_call.callee.as_ref() else { panic!() };
     assert_eq!(name, "apply");
     assert_eq!(outer_call.args.len(), 2);
 
     // El segundo arg es apply(square, 3)
-    let Expr::Call(inner_call) = &outer_call.args[1] else { panic!() };
-    let Expr::Identifier { name: iname, .. } = inner_call.callee.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Call(inner_call), .. } = &outer_call.args[1] else { panic!() };
+    let Expr { kind: ExprKind::Identifier { name: iname }, .. } = inner_call.callee.as_ref() else { panic!() };
     assert_eq!(iname, "apply");
 }
 
@@ -220,16 +220,16 @@ fn real_while_loop() {
     assert_eq!(f.name, "sum_to");
 
     // body es let total = 0 in let i = 0 in { while ... }
-    let Expr::Let(outer) = f.body.as_ref() else { panic!("body debe ser Let") };
+    let Expr { kind: ExprKind::Let(outer), .. } = f.body.as_ref() else { panic!("body debe ser Let") };
     assert_eq!(outer.bindings[0].name, "total");
-    let Expr::Let(inner) = outer.body.as_ref() else { panic!("inner debe ser Let") };
+    let Expr { kind: ExprKind::Let(inner), .. } = outer.body.as_ref() else { panic!("inner debe ser Let") };
     assert_eq!(inner.bindings[0].name, "i");
-    let Expr::Block(block) = inner.body.as_ref() else { panic!("debe ser Block") };
+    let Expr { kind: ExprKind::Block(block), .. } = inner.body.as_ref() else { panic!("debe ser Block") };
 
     // Primer elemento del bloque es while
-    assert!(matches!(block.body[0], Expr::While(_)));
+    assert!(matches!(block.body[0], Expr { kind: ExprKind::While(_), .. }));
     // Último elemento (valor del bloque) es total
-    assert!(matches!(block.tail(), Expr::Identifier { .. }));
+    assert!(matches!(block.tail(), Expr { kind: ExprKind::Identifier { .. }, .. }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,8 +264,8 @@ fn real_protocol() {
     assert_eq!(point.name, "Point");
 
     // entry: let p = new Point(3,4) in print(p.to_string())
-    let Expr::Let(let_e) = p.entry.as_ref() else { panic!() };
-    let Expr::New(new_e) = let_e.bindings[0].value.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(let_e), .. } = p.entry.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::New(new_e), .. } = let_e.bindings[0].value.as_ref() else { panic!() };
     assert_eq!(new_e.type_name.name(), "Point");
     assert_eq!(new_e.args.len(), 2);
 }
@@ -289,17 +289,17 @@ fn real_for_and_vector() {
     assert_eq!(p.declarations.len(), 1);
 
     // La entrada es let v = [...] in print(sum(v, 5))
-    let Expr::Let(let_e) = p.entry.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(let_e), .. } = p.entry.as_ref() else { panic!() };
     assert_eq!(let_e.bindings[0].name, "v");
 
     // El valor del binding es un vector explícito de 5 elementos
-    let Expr::Vector(vec_e) = let_e.bindings[0].value.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Vector(vec_e), .. } = let_e.bindings[0].value.as_ref() else { panic!() };
     let VectorExpr::Explicit { elements, .. } = vec_e.as_ref() else { panic!() };
     assert_eq!(elements.len(), 5);
 
     // El body llama a print(sum(v, 5))
-    let Expr::Call(print_call) = let_e.body.as_ref() else { panic!() };
-    let Expr::Identifier { name, .. } = print_call.callee.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Call(print_call), .. } = let_e.body.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Identifier { name }, .. } = print_call.callee.as_ref() else { panic!() };
     assert_eq!(name, "print");
 }
 
@@ -325,20 +325,20 @@ fn real_if_as_expression() {
     assert_eq!(f.name, "classify");
 
     // El cuerpo es un if con 3 elifs
-    let Expr::If(if_e) = f.body.as_ref() else { panic!("debe ser If") };
+    let Expr { kind: ExprKind::If(if_e), .. } = f.body.as_ref() else { panic!("debe ser If") };
     assert_eq!(if_e.elif_chain.len(), 3);
 
     // Verificar las condiciones de cada rama
     // then: n < 0
-    let Expr::Binary(b) = if_e.condition.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Binary(b), .. } = if_e.condition.as_ref() else { panic!() };
     assert_eq!(b.op, BinaryOp::Less);
 
     // elif[0]: n == 0
-    let Expr::Binary(b2) = if_e.elif_chain[0].condition.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Binary(b2), .. } = if_e.elif_chain[0].condition.as_ref() else { panic!() };
     assert_eq!(b2.op, BinaryOp::Eq);
 
     // else: "large"
-    assert!(matches!(if_e.else_body.as_ref(), Expr::Literal(Literal::String { .. })));
+    assert!(matches!(if_e.else_body.as_ref(), Expr { kind: ExprKind::Literal(Literal::String { .. }), .. }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -361,7 +361,7 @@ fn real_mutual_functions() {
     // Ambas funciones tienen if como cuerpo
     for decl in &p.declarations {
         let Decl::Function(f) = decl else { panic!() };
-        assert!(matches!(f.body.as_ref(), Expr::If(_)));
+        assert!(matches!(f.body.as_ref(), Expr { kind: ExprKind::If(_), .. }));
     }
 }
 
@@ -407,16 +407,16 @@ fn real_bank_account() {
     assert!(methods.contains(&"get_owner"));
 
     // entry: let account = new BankAccount("Alice", 1000) in { ... }
-    let Expr::Let(let_e) = p.entry.as_ref() else { panic!() };
-    let Expr::New(new_e) = let_e.bindings[0].value.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Let(let_e), .. } = p.entry.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::New(new_e), .. } = let_e.bindings[0].value.as_ref() else { panic!() };
     assert_eq!(new_e.type_name.name(), "BankAccount");
     assert_eq!(new_e.args.len(), 2);
 
-    let Expr::Block(block) = let_e.body.as_ref() else { panic!() };
+    let Expr { kind: ExprKind::Block(block), .. } = let_e.body.as_ref() else { panic!() };
     assert_eq!(block.body.len(), 3);
 
     // Todas las expresiones del bloque son method calls
     for expr in &block.body {
-        assert!(matches!(expr, Expr::MethodCall(_) | Expr::Call(_)));
+        assert!(matches!(expr, Expr { kind: ExprKind::MethodCall(_), .. } | Expr { kind: ExprKind::Call(_), .. }));
     }
 }
