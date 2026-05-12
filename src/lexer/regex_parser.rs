@@ -126,7 +126,7 @@ impl RegexParser {
 
                 elements.push(RegexAST::Range(start, end));
             } else {
-                elements.push(RegexAST::Literal(start));
+                elements.push(RegexAST::Range(start, start));
             }
         }
 

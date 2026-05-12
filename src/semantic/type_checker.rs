@@ -735,13 +735,13 @@ impl TypeChecker {
                 // Buscar el método en el padre (o el ancestro más cercano que lo implemente)
                 match self.lookup_method(&parent_name, &method_name) {
                     None => {
-                        self.errors.push(SemanticError::MethodNotFound {
-                            type_name: parent_name.clone(),
-                            method:    method_name.clone(),
-                            span:      c.callee.span,
-                        });
-                        for arg in &c.args { self.check_expr(arg); }
-                        HulkType::Never
+                        // El método no existe en el padre — intentar con el constructor del padre.
+                        // Permite base(args) para inicializar campos heredados.
+                        let ctor_params: Vec<HulkType> = self.types.types.get(&parent_name)
+                            .map(|ti| ti.constructor_params.iter().map(|(_, t)| t.clone()).collect())
+                            .unwrap_or_default();
+                        self.check_call_args(&parent_name, &ctor_params, &c.args, c.span);
+                        HulkType::Null
                     }
                     Some(sig) => {
                         // Verificar args contra los params del método del padre
