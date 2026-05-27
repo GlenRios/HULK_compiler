@@ -9,8 +9,7 @@ use inkwell::types::{BasicTypeEnum, FloatType, FunctionType, IntType, PointerTyp
 use inkwell::values::{BasicValue, BasicValueEnum, BasicMetadataValueEnum, FloatValue, FunctionValue, IntValue, PointerValue};
 use inkwell::FloatPredicate;
 
-use crate::semantic::{HulkType, TypeHierarchy, SemanticOutput};
-use crate::semantic::type_system::FuncSignature;
+use crate::semantic::{FuncSignature, HulkType, TypeHierarchy, SemanticOutput};
 use super::error::{CodegenError, CodegenResult};
 use super::objects::ObjectRegistry;
 use super::symbols::{SymbolTable, Place};
@@ -22,16 +21,13 @@ pub struct CodegenContext<'ctx> {
     pub builder:           Builder<'ctx>,
     pub symbols:           SymbolTable<'ctx>,
     pub functions:         HashMap<String, FunctionValue<'ctx>>,
+    pub func_sigs:         HashMap<String, FuncSignature>,
     pub current_function:  Option<FunctionValue<'ctx>>,
-    // ── Fase 5: soporte para tipos de usuario ──
     pub type_hierarchy:    TypeHierarchy,
     pub type_registry:     ObjectRegistry<'ctx>,
     pub self_ptr:            Option<PointerValue<'ctx>>,
     pub current_type_name:   Option<String>,
-    /// Nombre del método que se está compilando ahora mismo.
-    /// Necesario para resolver base() — permite saber qué método del padre llamar.
     pub current_method_name: Option<String>,
-    /// node_id → tipo de cada expresión; producido por el TypeChecker, consumido en lower_expr.
     pub expr_types:        HashMap<u32, HulkType>,
 }
 
@@ -43,6 +39,7 @@ impl<'ctx> CodegenContext<'ctx> {
             builder:           context.create_builder(),
             symbols:           SymbolTable::new(),
             functions:         HashMap::new(),
+            func_sigs:         HashMap::new(),
             current_function:  None,
             type_hierarchy:    TypeHierarchy::new(),
             type_registry:     ObjectRegistry::new(),
@@ -65,6 +62,7 @@ impl<'ctx> CodegenContext<'ctx> {
             builder:           context.create_builder(),
             symbols:           SymbolTable::new(),
             functions:         HashMap::new(),
+            func_sigs:         output.functions,
             current_function:  None,
             type_hierarchy:    output.hierarchy,
             type_registry:     ObjectRegistry::new(),
