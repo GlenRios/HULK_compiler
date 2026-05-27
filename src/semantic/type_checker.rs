@@ -29,16 +29,14 @@ use std::collections::HashMap;
 pub struct TypeChecker {
     pub symbols:        SymbolTable,
     pub types:          TypeHierarchy,
+    pub functions:      HashMap<String, FuncSignature>,
     pub errors:         Vec<SemanticError>,
-    /// node_id → tipo de cada expresión chequeada.
-    /// El codegen lo consulta para saber el tipo de cualquier sub-expresión.
-    pub expr_types: HashMap<u32, HulkType>,
+    pub expr_types:     HashMap<u32, HulkType>,
 
-    // Contexto interno
-    current_type:        Option<String>,   // tipo que se está analizando ahora
-    current_method_name: Option<String>,   // método que se está chequeando ahora
-    current_ret_type:    Option<HulkType>, // retorno esperado de la función actual
-    in_initializer:      bool,             // true → self está prohibido
+    current_type:        Option<String>,
+    current_method_name: Option<String>,
+    current_ret_type:    Option<HulkType>,
+    in_initializer:      bool,
 }
 
 impl TypeChecker {
@@ -46,6 +44,7 @@ impl TypeChecker {
         let mut tc = Self {
             symbols:          SymbolTable::new(),
             types:            TypeHierarchy::new(),
+            functions:        HashMap::new(),
             errors:           Vec::new(),
             expr_types:       HashMap::new(),
             current_type:        None,
@@ -137,7 +136,15 @@ impl TypeChecker {
             .map(|p| self.resolve_opt_type(&p.type_ann, p.span))
             .collect();
         let ret = self.resolve_opt_type(&f.return_type, f.span);
-        self.symbols.define(&f.name, Symbol::function(&f.name, params, ret));
+        self.symbols.define(&f.name, Symbol::function(&f.name, params.clone(), ret.clone()));
+        let params_named: Vec<(String, HulkType)> = f.params.iter()
+            .zip(params.iter())
+            .map(|(p, ty)| (p.name.clone(), ty.clone()))
+            .collect();
+        self.functions.insert(f.name.clone(), FuncSignature {
+            params:      params_named,
+            return_type: ret,
+        });
     }
 
     fn collect_type(&mut self, t: &TypeDecl) {
@@ -323,7 +330,10 @@ impl TypeChecker {
         } else if !actual_ret.is_never() && !matches!(actual_ret, HulkType::Unknown) {
             // INFERENCIA: sin anotación → propagar el tipo inferido del cuerpo
             // hacia la tabla de símbolos para que los llamadores lo vean
-            self.symbols.update_function_return(&f.name, actual_ret);
+            self.symbols.update_function_return(&f.name, actual_ret.clone());
+            if let Some(sig) = self.functions.get_mut(&f.name) {
+                sig.return_type = actual_ret;
+            }
         }
 
         self.current_ret_type = prev_ret;

@@ -252,8 +252,22 @@ impl<'ctx> CodegenContext<'ctx> {
     pub fn predeclare_functions(&mut self, decls: &[Decl]) {
         for decl in decls {
             if let Decl::Function(func) = decl {
-                let param_types = vec![self.f64_type().into(); func.params.len()];
-                let fn_type = self.f64_type().fn_type(&param_types, false);
+                let sig = self.func_sigs.get(&func.name).cloned();
+
+                let param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> =
+                    if let Some(ref s) = sig {
+                        s.params.iter()
+                            .map(|(_, ty)| self.hulk_type_to_llvm(ty).into())
+                            .collect()
+                    } else {
+                        vec![self.f64_type().into(); func.params.len()]
+                    };
+
+                let ret_ty = sig.as_ref()
+                    .map(|s| s.return_type.clone())
+                    .unwrap_or(HulkType::Number);
+
+                let fn_type = self.hulk_type_to_llvm(&ret_ty).fn_type(&param_types, false);
                 let function = self.module.add_function(&func.name, fn_type, None);
                 self.functions.insert(func.name.clone(), function);
             }
@@ -269,33 +283,60 @@ impl<'ctx> CodegenContext<'ctx> {
 
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
-
         self.current_function = Some(function);
         self.push_scope();
 
+        let sig = self.func_sigs.get(&func_decl.name).cloned();
+
         for (idx, param_decl) in func_decl.params.iter().enumerate() {
-            if let Some(param) = function.get_nth_param(idx as u32) {
-                let param_val = param.into_float_value();
-                // Parámetros de función siguen siendo f64 por ahora (Fase 6 los generaliza)
-                let slot = self.create_entry_alloca_for(
-                    function,
-                    &param_decl.name,
-                    &crate::semantic::HulkType::Number,
-                )?;
+            if let Some(pval) = function.get_nth_param(idx as u32) {
+                let hulk_ty = sig.as_ref()
+                    .and_then(|s| s.params.get(idx))
+                    .map(|(_, ty)| ty.clone())
+                    .unwrap_or(HulkType::Number);
+
+                let slot = self.create_entry_alloca_for(function, &param_decl.name, &hulk_ty)?;
+                let store_val: BasicValueEnum = match &hulk_ty {
+                    HulkType::Number  => pval.into_float_value().into(),
+                    HulkType::Boolean => pval.into_int_value().into(),
+                    _                 => pval.into_pointer_value().into(),
+                };
                 self.builder
-                    .build_store(slot.ptr, param_val)
+                    .build_store(slot.ptr, store_val)
                     .map_err(|e| CodegenError::Builder(e.to_string()))?;
                 self.symbols.insert(param_decl.name.clone(), slot);
             }
         }
 
         let body_value = self.visit_expr(&func_decl.body)?;
+        let ret_ty = sig.map(|s| s.return_type).unwrap_or(HulkType::Number);
 
         if !self.is_current_block_terminated() {
-            let ret = self.require_number(body_value)?;
-            self.builder
-                .build_return(Some(&ret))
-                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+            match &ret_ty {
+                HulkType::Number => {
+                    let v = self.require_number(body_value)?;
+                    self.builder.build_return(Some(&v as &dyn BasicValue))
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+                HulkType::Boolean => {
+                    let v = self.require_bool(body_value)?;
+                    self.builder.build_return(Some(&v as &dyn BasicValue))
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+                HulkType::Null | HulkType::Unknown => {
+                    self.builder.build_return(None)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+                _ => {
+                    let ptr: PointerValue = match body_value {
+                        CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => p,
+                        CgValue::Null => self.ptr_type().const_null(),
+                        _ => self.ptr_type().const_null(),
+                    };
+                    self.builder.build_return(Some(&ptr as &dyn BasicValue))
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+            }
         }
 
         self.pop_scope();

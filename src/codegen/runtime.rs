@@ -91,6 +91,10 @@ impl<'ctx> CodegenContext<'ctx> {
             bool_t.fn_type(&[ptr_t.into()], false));
         self.declare_extern("hulk_range_current",
             f64_t.fn_type(&[ptr_t.into()], false));
+
+        // ── String equality ───────────────────────────────────────────────
+        self.declare_extern("hulk_str_eq",
+            bool_t.fn_type(&[ptr_t.into(), ptr_t.into()], false));
     }
 
     // ── Accesores de conveniencia ─────────────────────────────────────────────
@@ -219,6 +223,13 @@ pub extern "C" fn hulk_range_next(range: *mut u8) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn hulk_range_current(range: *mut u8) -> f64 {
     unsafe { *(range as *const f64).add(2) }
+}
+
+/// Compara dos strings por contenido (operador ==).
+/// La spec HULK especifica igualdad de valor para String, no identidad de puntero.
+#[unsafe(no_mangle)]
+pub extern "C" fn hulk_str_eq(a: *const c_char, b: *const c_char) -> bool {
+    ptr_to_string(a) == ptr_to_string(b)
 }
 
 // ── Helpers internos ──────────────────────────────────────────────────────────

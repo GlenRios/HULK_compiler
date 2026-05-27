@@ -148,21 +148,71 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                             .into_float_value();
                         Ok(CgValue::Number(result))
                     }
-                    BinaryOp::Eq => {
-                        let l = self.eval_number(&bin.left)?;
-                        let r = self.eval_number(&bin.right)?;
-                        Ok(CgValue::Bool(
-                            self.builder.build_float_compare(FloatPredicate::OEQ, l, r, "eqtmp")
-                                .map_err(|e| CodegenError::Builder(e.to_string()))?,
-                        ))
-                    }
-                    BinaryOp::NotEq => {
-                        let l = self.eval_number(&bin.left)?;
-                        let r = self.eval_number(&bin.right)?;
-                        Ok(CgValue::Bool(
-                            self.builder.build_float_compare(FloatPredicate::ONE, l, r, "neqtmp")
-                                .map_err(|e| CodegenError::Builder(e.to_string()))?,
-                        ))
+                    BinaryOp::Eq | BinaryOp::NotEq => {
+                        let is_eq = matches!(op, BinaryOp::Eq);
+                        match self.get_expr_type(&bin.left) {
+                            HulkType::Boolean => {
+                                let l = self.eval_bool(&bin.left)?;
+                                let r = self.eval_bool(&bin.right)?;
+                                let pred = if is_eq { IntPredicate::EQ } else { IntPredicate::NE };
+                                Ok(CgValue::Bool(
+                                    self.builder.build_int_compare(pred, l, r, "eqtmp")
+                                        .map_err(|e| CodegenError::Builder(e.to_string()))?,
+                                ))
+                            }
+                            HulkType::StringT => {
+                                let lv = self.visit_expr(&bin.left)?;
+                                let rv = self.visit_expr(&bin.right)?;
+                                let lp = self.cgvalue_to_str(lv)?;
+                                let rp = self.cgvalue_to_str(rv)?;
+                                let f  = self.require_fn("hulk_str_eq");
+                                let result = self.builder
+                                    .build_call(f, &[lp.into(), rp.into()], "streq")
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                                    .try_as_basic_value().left().unwrap().into_int_value();
+                                let out = if is_eq {
+                                    result
+                                } else {
+                                    self.builder.build_not(result, "strne")
+                                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                                };
+                                Ok(CgValue::Bool(out))
+                            }
+                            HulkType::UserDefined(_) | HulkType::Object => {
+                                let lv = self.visit_expr(&bin.left)?;
+                                let rv = self.visit_expr(&bin.right)?;
+                                let i64_t = self.context.i64_type();
+                                let lp = match lv {
+                                    CgValue::Object(p) | CgValue::Str(p) | CgValue::Vector(p) => p,
+                                    CgValue::Null => self.ptr_type().const_null(),
+                                    _ => return Err(CodegenError::Unsupported("eq sobre tipo no-puntero".into())),
+                                };
+                                let rp = match rv {
+                                    CgValue::Object(p) | CgValue::Str(p) | CgValue::Vector(p) => p,
+                                    CgValue::Null => self.ptr_type().const_null(),
+                                    _ => return Err(CodegenError::Unsupported("eq sobre tipo no-puntero".into())),
+                                };
+                                let li = self.builder.build_ptr_to_int(lp, i64_t, "lptr")
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                                let ri = self.builder.build_ptr_to_int(rp, i64_t, "rptr")
+                                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                                let pred = if is_eq { IntPredicate::EQ } else { IntPredicate::NE };
+                                Ok(CgValue::Bool(
+                                    self.builder.build_int_compare(pred, li, ri, "ptreq")
+                                        .map_err(|e| CodegenError::Builder(e.to_string()))?,
+                                ))
+                            }
+                            _ => {
+                                // Number, Unknown → comparación float
+                                let l = self.eval_number(&bin.left)?;
+                                let r = self.eval_number(&bin.right)?;
+                                let pred = if is_eq { FloatPredicate::OEQ } else { FloatPredicate::ONE };
+                                Ok(CgValue::Bool(
+                                    self.builder.build_float_compare(pred, l, r, "eqtmp")
+                                        .map_err(|e| CodegenError::Builder(e.to_string()))?,
+                                ))
+                            }
+                        }
                     }
                     BinaryOp::Less => {
                         let l = self.eval_number(&bin.left)?;
@@ -197,20 +247,56 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                         ))
                     }
                     BinaryOp::And => {
-                        let l = self.eval_bool(&bin.left)?;
-                        let r = self.eval_bool(&bin.right)?;
-                        Ok(CgValue::Bool(
-                            self.builder.build_and(l, r, "andtmp")
-                                .map_err(|e| CodegenError::Builder(e.to_string()))?,
-                        ))
+                        let fn_val      = self.current_fn()?;
+                        let rhs_block   = self.context.append_basic_block(fn_val, "and_rhs");
+                        let merge_block = self.context.append_basic_block(fn_val, "and_merge");
+
+                        let lhs       = self.eval_bool(&bin.left)?;
+                        let lhs_block = self.builder.get_insert_block().unwrap();
+                        self.builder.build_conditional_branch(lhs, rhs_block, merge_block)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                        self.builder.position_at_end(rhs_block);
+                        let rhs           = self.eval_bool(&bin.right)?;
+                        let rhs_end_block = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(merge_block)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                        self.builder.position_at_end(merge_block);
+                        let phi       = self.builder.build_phi(self.bool_type(), "andtmp")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        let false_val = self.bool_type().const_int(0, false);
+                        phi.add_incoming(&[
+                            (&false_val as &dyn BasicValue<'ctx>, lhs_block),
+                            (&rhs       as &dyn BasicValue<'ctx>, rhs_end_block),
+                        ]);
+                        Ok(CgValue::Bool(phi.as_basic_value().into_int_value()))
                     }
                     BinaryOp::Or => {
-                        let l = self.eval_bool(&bin.left)?;
-                        let r = self.eval_bool(&bin.right)?;
-                        Ok(CgValue::Bool(
-                            self.builder.build_or(l, r, "ortmp")
-                                .map_err(|e| CodegenError::Builder(e.to_string()))?,
-                        ))
+                        let fn_val      = self.current_fn()?;
+                        let rhs_block   = self.context.append_basic_block(fn_val, "or_rhs");
+                        let merge_block = self.context.append_basic_block(fn_val, "or_merge");
+
+                        let lhs       = self.eval_bool(&bin.left)?;
+                        let lhs_block = self.builder.get_insert_block().unwrap();
+                        self.builder.build_conditional_branch(lhs, merge_block, rhs_block)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                        self.builder.position_at_end(rhs_block);
+                        let rhs           = self.eval_bool(&bin.right)?;
+                        let rhs_end_block = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(merge_block)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                        self.builder.position_at_end(merge_block);
+                        let phi      = self.builder.build_phi(self.bool_type(), "ortmp")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        let true_val = self.bool_type().const_int(1, false);
+                        phi.add_incoming(&[
+                            (&true_val as &dyn BasicValue<'ctx>, lhs_block),
+                            (&rhs      as &dyn BasicValue<'ctx>, rhs_end_block),
+                        ]);
+                        Ok(CgValue::Bool(phi.as_basic_value().into_int_value()))
                     }
                     BinaryOp::Concat => {
                         let l = self.visit_expr(&bin.left)?;
@@ -507,17 +593,37 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                     .or_else(|| self.module.get_function(&callee_name))
                     .ok_or_else(|| CodegenError::UnknownFunction(callee_name.clone()))?;
 
+                let sig = self.func_sigs.get(&callee_name).cloned();
+
                 let mut args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::with_capacity(call.args.len());
-                for arg in &call.args {
-                    let v = self.eval_number(arg)?;
-                    args.push(v.into());
+                for (i, arg) in call.args.iter().enumerate() {
+                    let val      = self.visit_expr(arg)?;
+                    let expected = sig.as_ref()
+                        .and_then(|s| s.params.get(i))
+                        .map(|(_, t)| t.clone())
+                        .unwrap_or(HulkType::Object);
+                    args.push(self.coerce_arg(val, &expected)?);
                 }
+
                 let call_site = self.builder
                     .build_call(function, &args, "calltmp")
                     .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                match call_site.try_as_basic_value().left() {
-                    Some(v) => Ok(CgValue::Number(v.into_float_value())),
-                    None    => Ok(CgValue::Void),
+
+                let ret_ty = sig.map(|s| s.return_type).unwrap_or(HulkType::Number);
+                match ret_ty {
+                    HulkType::Number => match call_site.try_as_basic_value().left() {
+                        Some(v) => Ok(CgValue::Number(v.into_float_value())),
+                        None    => Ok(CgValue::Number(self.f64_type().const_float(0.0))),
+                    },
+                    HulkType::Boolean => match call_site.try_as_basic_value().left() {
+                        Some(v) => Ok(CgValue::Bool(v.into_int_value())),
+                        None    => Ok(CgValue::Bool(self.bool_type().const_int(0, false))),
+                    },
+                    HulkType::Null | HulkType::Unknown => Ok(CgValue::Void),
+                    _ => match call_site.try_as_basic_value().left() {
+                        Some(v) => Ok(CgValue::Object(v.into_pointer_value())),
+                        None    => Ok(CgValue::Null),
+                    },
                 }
             }
 
@@ -628,8 +734,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                         }
                         Ok(CgValue::Bool(phi.as_basic_value().into_int_value()))
                     }
-                    _ => {
-                        // Number u otros — coerce a f64
+                    CgValue::Number(_) => {
                         let phi = self.builder.build_phi(self.f64_type(), "iftmp")
                             .map_err(|e| CodegenError::Builder(e.to_string()))?;
                         for (val, pred) in &incoming {
@@ -638,6 +743,20 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                         }
                         Ok(CgValue::Number(phi.as_basic_value().into_float_value()))
                     }
+                    CgValue::Str(_) | CgValue::Object(_) | CgValue::Vector(_) | CgValue::Null => {
+                        let phi = self.builder.build_phi(self.ptr_type(), "iftmp")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        for (val, pred) in &incoming {
+                            let ptr = match val {
+                                CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => *p,
+                                CgValue::Null => self.ptr_type().const_null(),
+                                _ => self.ptr_type().const_null(),
+                            };
+                            phi.add_incoming(&[(&ptr as &dyn BasicValue<'ctx>, *pred)]);
+                        }
+                        Ok(CgValue::Object(phi.as_basic_value().into_pointer_value()))
+                    }
+                    _ => Ok(CgValue::Void),
                 }
             }
 

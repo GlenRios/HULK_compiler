@@ -79,7 +79,7 @@ pub struct ProtocolInfo {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TypeHierarchy — jerarquía completa
+//  TypeHierarchy — jerarquía de tipos y protocolos
 // ─────────────────────────────────────────────────────────────────────────────
 pub struct TypeHierarchy {
     pub types:     HashMap<String, TypeInfo>,

@@ -7,14 +7,14 @@ pub mod type_checker;
 
 pub use errors::SemanticError;
 pub use type_checker::TypeChecker;
-pub use type_system::{HulkType, TypeHierarchy};
+pub use type_system::{FuncSignature, HulkType, TypeHierarchy};
 
 use std::collections::HashMap;
 use crate::parser::ast::Program;
 
-/// Todo lo que el codegen necesita del análisis semántico.
 pub struct SemanticOutput {
     pub hierarchy:  TypeHierarchy,
+    pub functions:  HashMap<String, FuncSignature>,
     pub expr_types: HashMap<u32, HulkType>,
 }
 
@@ -24,6 +24,7 @@ pub fn analyze(program: &Program) -> Result<SemanticOutput, Vec<SemanticError>> 
     if errors.is_empty() {
         Ok(SemanticOutput {
             hierarchy:  checker.types,
+            functions:  checker.functions,
             expr_types: checker.expr_types,
         })
     } else {

@@ -1,0 +1,8 @@
+﻿[target.x86_64-pc-windows-gnu]
+linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
+rustflags = [
+  "-C", "link-arg=-Wl,--whole-archive,C:/llvm17-wrap/libllvm17stubs.a,--no-whole-archive",
+]
+
+[env]
+LLVM_SYS_170_PREFIX = "C:\\llvm17-wrap"
