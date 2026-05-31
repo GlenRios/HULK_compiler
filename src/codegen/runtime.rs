@@ -104,9 +104,10 @@ impl<'ctx> CodegenContext<'ctx> {
         self.module.get_function(name)
     }
 
-    pub fn require_fn(&self, name: &str) -> FunctionValue<'ctx> {
+    pub fn require_fn(&self, name: &str) -> super::error::CodegenResult<FunctionValue<'ctx>> {
         self.module.get_function(name)
-            .unwrap_or_else(|| panic!("runtime fn '{name}' no declarada — llama register_runtime() primero"))
+            .ok_or_else(|| super::error::CodegenError::Unsupported(
+                format!("runtime fn '{name}' no declarada — llama register_runtime() primero")))
     }
 }
 

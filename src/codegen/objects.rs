@@ -15,13 +15,14 @@ pub struct TypeLayout<'ctx> {
 }
 
 pub struct ObjectRegistry<'ctx> {
-    pub layouts:  HashMap<String, TypeLayout<'ctx>>,
-    next_tag:     u32,
+    pub layouts:             HashMap<String, TypeLayout<'ctx>>,
+    pub protocol_conformers: HashMap<String, Vec<(String, u32)>>,
+    next_tag:                u32,
 }
 
 impl<'ctx> ObjectRegistry<'ctx> {
     pub fn new() -> Self {
-        Self { layouts: HashMap::new(), next_tag: 1 }
+        Self { layouts: HashMap::new(), protocol_conformers: HashMap::new(), next_tag: 1 }
     }
 
     pub fn alloc_tag(&mut self) -> u32 {

@@ -102,34 +102,7 @@ impl<'ctx> CodegenContext<'ctx> {
 
         // Compilar cuerpo
         let body_val = self.visit_expr(&method.body)?;
-        if !self.is_current_block_terminated() {
-            match &ret_hulk_ty {
-                HulkType::Number => {
-                    let v = self.require_number(body_val)?;
-                    self.builder.build_return(Some(&v as &dyn BasicValue))
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-                HulkType::Boolean => {
-                    let v = self.require_bool(body_val)?;
-                    self.builder.build_return(Some(&v as &dyn BasicValue))
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-                HulkType::Null | HulkType::Unknown => {
-                    self.builder.build_return(None)
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-                _ => {
-                    // String, Object, UserDefined → ptr
-                    let ptr: PointerValue = match body_val {
-                        CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => p,
-                        CgValue::Null => self.ptr_type().const_null(),
-                        _ => self.ptr_type().const_null(),
-                    };
-                    self.builder.build_return(Some(&ptr as &dyn BasicValue))
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-            }
-        }
+        self.emit_typed_return(body_val, &ret_hulk_ty)?;
 
         self.pop_scope();
         self.self_ptr            = None;
@@ -165,7 +138,7 @@ impl<'ctx> CodegenContext<'ctx> {
         let size = struct_ty.size_of()
             .ok_or_else(|| CodegenError::Unsupported(
                 format!("tipo '{}' sin tamaño — struct opaco?", td.name)))?;
-        let malloc_fn = self.require_fn("malloc");
+        let malloc_fn = self.require_fn("malloc")?;
         let raw = self.builder
             .build_call(malloc_fn, &[size.into()], "raw")
             .map_err(|e| CodegenError::Builder(e.to_string()))?
@@ -204,6 +177,14 @@ impl<'ctx> CodegenContext<'ctx> {
             self.builder.build_store(slot.ptr, store_val)
                 .map_err(|e| CodegenError::Builder(e.to_string()))?;
             self.symbols.insert(pname.clone(), slot);
+        }
+
+        // ── 4.5. Inicializar atributos heredados del padre ───────────────────
+        if let Some(parent_type) = &td.parent {
+            let parent_name = parent_type.name().to_string();
+            let parent_args = td.parent_args.clone();
+            let type_name   = td.name.clone();
+            self.init_inherited_fields(raw, &type_name, &parent_name, parent_args, function)?;
         }
 
         // ── 5. Compilar inicializadores y escribir en campos ──────────────────
@@ -246,6 +227,80 @@ impl<'ctx> CodegenContext<'ctx> {
         let vtable_const = layout.vtable_type.const_named_struct(&fn_ptrs);
         layout.vtable_global.set_initializer(&vtable_const);
         layout.vtable_global.set_constant(true);
+        Ok(())
+    }
+
+    /// Inicializa en `raw` (objeto del tipo `child_type_name`) los campos que pertenecen
+    /// a `parent_type_name` y sus ancestros, usando `parent_args` como argumentos al
+    /// constructor del padre.
+    ///
+    /// Se llama desde `lower_constructor` cuando el tipo a construir hereda de otro:
+    ///   type Child(v) inherits Base(v) { }
+    /// → evalúa `v` (parent_args) en el scope del ctor de Child, luego ejecuta los
+    ///   inicializadores de Base colocando los resultados en los campos de `raw`.
+    fn init_inherited_fields(
+        &mut self,
+        raw:              PointerValue<'ctx>,
+        child_type_name:  &str,
+        parent_type_name: &str,
+        parent_args:      Vec<crate::parser::ast::Expr>,
+        function:         FunctionValue<'ctx>,
+    ) -> CodegenResult<()> {
+        // Obtener el TypeDecl del padre (clonado para evitar conflictos de borrow)
+        let parent_td = self.type_decls.get(parent_type_name).cloned()
+            .ok_or_else(|| CodegenError::Unsupported(
+                format!("TypeDecl de '{}' no encontrado para inicializar herencia", parent_type_name)))?;
+
+        // Parámetros del constructor del padre (nombre + tipo)
+        let parent_ctor_params: Vec<(String, HulkType)> = self.type_hierarchy.types
+            .get(parent_type_name)
+            .map(|ti| ti.constructor_params.clone())
+            .unwrap_or_default();
+
+        // Evaluar parent_args en el scope actual (el del constructor del hijo)
+        let mut arg_vals: Vec<super::value::CgValue<'ctx>> = Vec::new();
+        for expr in &parent_args {
+            arg_vals.push(self.visit_expr(expr)?);
+        }
+
+        // Abrir un nuevo scope y ligar los nombres de params del padre a los valores evaluados
+        self.push_scope();
+        for ((pname, ptype), val) in parent_ctor_params.iter().zip(arg_vals.iter()) {
+            let slot = self.create_entry_alloca_for(function, pname, ptype)?;
+            let store_val: BasicValueEnum = match ptype {
+                HulkType::Number  => self.require_number(*val)?.into(),
+                HulkType::Boolean => self.require_bool(*val)?.into(),
+                _ => match val {
+                    super::value::CgValue::Object(p) |
+                    super::value::CgValue::Str(p)    |
+                    super::value::CgValue::Vector(p) => (*p).into(),
+                    super::value::CgValue::Null      => self.ptr_type().const_null().into(),
+                    _ => return Err(CodegenError::Unsupported(
+                        format!("tipo inesperado al pasar arg heredado para '{}'", pname))),
+                }
+            };
+            self.builder.build_store(slot.ptr, store_val)
+                .map_err(|e| CodegenError::Builder(e.to_string()))?;
+            self.symbols.insert(pname.clone(), slot);
+        }
+
+        // Primero inicializar los campos del abuelo (recursión)
+        if let Some(grandparent_type) = &parent_td.parent {
+            let gp_name = grandparent_type.name().to_string();
+            let gp_args = parent_td.parent_args.clone();
+            self.init_inherited_fields(raw, child_type_name, &gp_name, gp_args, function)?;
+        }
+
+        // Luego los campos propios del padre
+        for member in &parent_td.members {
+            if let TypeMember::Attribute(attr) = member {
+                let val   = self.visit_expr(&attr.value)?;
+                let place = self.field_place(raw, child_type_name, &attr.name)?;
+                self.store_place(&place, val)?;
+            }
+        }
+
+        self.pop_scope();
         Ok(())
     }
 
@@ -310,34 +365,7 @@ impl<'ctx> CodegenContext<'ctx> {
 
         let body_value = self.visit_expr(&func_decl.body)?;
         let ret_ty = sig.map(|s| s.return_type).unwrap_or(HulkType::Number);
-
-        if !self.is_current_block_terminated() {
-            match &ret_ty {
-                HulkType::Number => {
-                    let v = self.require_number(body_value)?;
-                    self.builder.build_return(Some(&v as &dyn BasicValue))
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-                HulkType::Boolean => {
-                    let v = self.require_bool(body_value)?;
-                    self.builder.build_return(Some(&v as &dyn BasicValue))
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-                HulkType::Null | HulkType::Unknown => {
-                    self.builder.build_return(None)
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-                _ => {
-                    let ptr: PointerValue = match body_value {
-                        CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => p,
-                        CgValue::Null => self.ptr_type().const_null(),
-                        _ => self.ptr_type().const_null(),
-                    };
-                    self.builder.build_return(Some(&ptr as &dyn BasicValue))
-                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                }
-            }
-        }
+        self.emit_typed_return(body_value, &ret_ty)?;
 
         self.pop_scope();
         self.current_function = None;

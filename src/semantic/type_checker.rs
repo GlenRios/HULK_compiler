@@ -21,7 +21,7 @@ use super::{
     type_system::{FuncSignature, HulkType, TypeHierarchy, TypeInfo, ProtocolInfo},
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  TypeChecker
@@ -37,6 +37,10 @@ pub struct TypeChecker {
     current_method_name: Option<String>,
     current_ret_type:    Option<HulkType>,
     in_initializer:      bool,
+
+    // Type inference for unannotated function parameters
+    inferring_params:    HashSet<String>,
+    param_constraints:   HashMap<String, HulkType>,
 }
 
 impl TypeChecker {
@@ -51,6 +55,8 @@ impl TypeChecker {
             current_method_name: None,
             current_ret_type:    None,
             in_initializer:      false,
+            inferring_params:    HashSet::new(),
+            param_constraints:   HashMap::new(),
         };
         tc.register_builtin_functions();
         tc
@@ -89,18 +95,55 @@ impl TypeChecker {
 
     pub fn check_program(&mut self, program: &Program) -> Vec<SemanticError> {
         // Paso 1 — forward-declare todos los tipos, protocolos y funciones
-        //          (permite recursión mutua entre funciones y tipos)
         self.collect_all_declarations(&program.declarations);
 
-        // Paso 2 — chequear cuerpos
+        // Paso 2 — chequear cuerpos (infiere params desde el cuerpo)
         for decl in &program.declarations {
             self.check_decl(decl);
         }
 
         // Paso 3 — chequear la expresión de entrada
+        // Esto también dispara refine_params_from_call para params que
+        // solo se pueden inferir desde el call site (e.g. id(x) => x)
         self.check_expr(&program.entry);
 
+        // Paso 3.5 — re-inferir retornos de funciones que aún tienen Unknown
+        // (ocurre cuando el param se infirió desde el call site, no del cuerpo)
+        self.reinfer_unknown_returns(&program.declarations);
+
         std::mem::take(&mut self.errors)
+    }
+
+    fn reinfer_unknown_returns(&mut self, decls: &[Decl]) {
+        for decl in decls {
+            if let Decl::Function(f) = decl {
+                let ret_unknown = self.functions.get(&f.name)
+                    .map_or(false, |s| matches!(s.return_type, HulkType::Unknown));
+                if !ret_unknown { continue; }
+
+                // Re-chequear el cuerpo con los params ya refinados
+                self.symbols.push_scope();
+                let param_types: Vec<(String, HulkType)> = self.functions.get(&f.name)
+                    .map(|s| s.params.clone())
+                    .unwrap_or_default();
+                for (pname, ptype) in &param_types {
+                    self.symbols.define(pname, Symbol::variable(pname, ptype.clone(), false));
+                }
+
+                let prev_errors_len = self.errors.len();
+                let inferred_ret = self.check_expr(&f.body);
+                // Descartar errores duplicados del re-check
+                self.errors.truncate(prev_errors_len);
+
+                self.symbols.pop_scope();
+
+                if !inferred_ret.is_never() && !matches!(inferred_ret, HulkType::Unknown) {
+                    if let Some(sig) = self.functions.get_mut(&f.name) {
+                        sig.return_type = inferred_ret;
+                    }
+                }
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -304,22 +347,38 @@ impl TypeChecker {
     fn check_func_decl(&mut self, f: &FuncDecl) {
         self.symbols.push_scope();
 
-        // Parámetros disponibles dentro del cuerpo
         for param in &f.params {
             let ty = self.resolve_opt_type(&param.type_ann, param.span);
-            self.symbols.define(
-                &param.name,
-                Symbol::variable(&param.name, ty, false),
-            );
+            self.symbols.define(&param.name, Symbol::variable(&param.name, ty, false));
         }
+
+        // Inferencia bottom-up: identificar params sin anotación para rastrearlos
+        let unknown_params: HashSet<String> = f.params.iter()
+            .filter(|p| p.type_ann.is_none())
+            .map(|p| p.name.clone())
+            .collect();
+        let prev_inferring   = std::mem::replace(&mut self.inferring_params,  unknown_params);
+        let prev_constraints = std::mem::replace(&mut self.param_constraints, HashMap::new());
 
         let expected_ret = self.resolve_opt_type(&f.return_type, f.span);
         let prev_ret = self.current_ret_type.replace(expected_ret.clone());
 
         let actual_ret = self.check_expr(&f.body);
 
+        // Resolver constraints: actualizar la firma con los tipos inferidos
+        if !self.inferring_params.is_empty() {
+            if let Some(sig) = self.functions.get_mut(&f.name) {
+                for (pname, pty) in sig.params.iter_mut() {
+                    if matches!(pty, HulkType::Unknown) {
+                        *pty = self.param_constraints.get(pname)
+                            .cloned()
+                            .unwrap_or(HulkType::Object);
+                    }
+                }
+            }
+        }
+
         if !matches!(expected_ret, HulkType::Unknown) {
-            // Anotación explícita → verificar que el cuerpo conforma
             if !self.types.conforms(&actual_ret, &expected_ret) {
                 self.errors.push(SemanticError::TypeMismatch {
                     expected: expected_ret.name(),
@@ -328,15 +387,15 @@ impl TypeChecker {
                 });
             }
         } else if !actual_ret.is_never() && !matches!(actual_ret, HulkType::Unknown) {
-            // INFERENCIA: sin anotación → propagar el tipo inferido del cuerpo
-            // hacia la tabla de símbolos para que los llamadores lo vean
             self.symbols.update_function_return(&f.name, actual_ret.clone());
             if let Some(sig) = self.functions.get_mut(&f.name) {
                 sig.return_type = actual_ret;
             }
         }
 
-        self.current_ret_type = prev_ret;
+        self.param_constraints = prev_constraints;
+        self.inferring_params  = prev_inferring;
+        self.current_ret_type  = prev_ret;
         self.symbols.pop_scope();
     }
 
@@ -523,13 +582,16 @@ impl TypeChecker {
         let lt = self.check_expr(&b.left);
         let rt = self.check_expr(&b.right);
 
-        // Si alguno es Never, no propagar errores
         if lt.is_never() || rt.is_never() { return HulkType::Never; }
 
         match &b.op {
             BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul
             | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Power => {
-                if lt != HulkType::Number || rt != HulkType::Number {
+                self.constrain_number(&b.left, &lt);
+                self.constrain_number(&b.right, &rt);
+                if !self.types.conforms(&lt, &HulkType::Number)
+                    || !self.types.conforms(&rt, &HulkType::Number)
+                {
                     self.errors.push(SemanticError::InvalidBinaryTypes {
                         op:    format!("{:?}", b.op),
                         left:  lt.name(),
@@ -541,7 +603,11 @@ impl TypeChecker {
             }
 
             BinaryOp::And | BinaryOp::Or => {
-                if lt != HulkType::Boolean || rt != HulkType::Boolean {
+                self.constrain_bool(&b.left, &lt);
+                self.constrain_bool(&b.right, &rt);
+                if !self.types.conforms(&lt, &HulkType::Boolean)
+                    || !self.types.conforms(&rt, &HulkType::Boolean)
+                {
                     self.errors.push(SemanticError::InvalidBinaryTypes {
                         op:    format!("{:?}", b.op),
                         left:  lt.name(),
@@ -553,7 +619,6 @@ impl TypeChecker {
             }
 
             BinaryOp::Eq | BinaryOp::NotEq => {
-                // Comparación entre tipos compatibles
                 if !self.types.conforms(&lt, &rt) && !self.types.conforms(&rt, &lt) {
                     self.errors.push(SemanticError::InvalidBinaryTypes {
                         op:    format!("{:?}", b.op),
@@ -567,7 +632,11 @@ impl TypeChecker {
 
             BinaryOp::Less | BinaryOp::Greater
             | BinaryOp::LessEq | BinaryOp::GreaterEq => {
-                if lt != HulkType::Number || rt != HulkType::Number {
+                self.constrain_number(&b.left, &lt);
+                self.constrain_number(&b.right, &rt);
+                if !self.types.conforms(&lt, &HulkType::Number)
+                    || !self.types.conforms(&rt, &HulkType::Number)
+                {
                     self.errors.push(SemanticError::InvalidBinaryTypes {
                         op:    format!("{:?}", b.op),
                         left:  lt.name(),
@@ -578,9 +647,47 @@ impl TypeChecker {
                 HulkType::Boolean
             }
 
-            // @ y @@ convierten cualquier cosa a String
-            BinaryOp::Concat | BinaryOp::DoubleConcat => {
-                HulkType::StringT
+            BinaryOp::Concat | BinaryOp::DoubleConcat => HulkType::StringT,
+        }
+    }
+
+    // Si la expresión es una variable que estamos infiriendo, registrar su tipo esperado
+    // Cuando se llama a una función con tipos concretos, refinar params Unknown/Object.
+    // Esto permite inferir `id(x) => x` como Number cuando se llama con id(42).
+    fn refine_params_from_call(&mut self, fn_name: &str, params: &[HulkType], args: &[Expr]) {
+        let needs_refine = params.iter().any(|t| matches!(t, HulkType::Unknown | HulkType::Object));
+        if !needs_refine { return; }
+
+        let arg_types: Vec<HulkType> = args.iter().map(|a| self.check_expr(a)).collect();
+
+        if let Some(sig) = self.functions.get_mut(fn_name) {
+            for (i, ((_pname, pty), arg_ty)) in sig.params.iter_mut().zip(arg_types.iter()).enumerate() {
+                let _ = i;
+                if matches!(pty, HulkType::Unknown | HulkType::Object)
+                    && !matches!(arg_ty, HulkType::Unknown | HulkType::Object | HulkType::Never)
+                {
+                    *pty = arg_ty.clone();
+                }
+            }
+        }
+    }
+
+    fn constrain_number(&mut self, expr: &Expr, ty: &HulkType) {
+        if matches!(ty, HulkType::Unknown) {
+            if let ExprKind::Identifier { name } = &expr.kind {
+                if self.inferring_params.contains(name.as_str()) {
+                    self.param_constraints.insert(name.clone(), HulkType::Number);
+                }
+            }
+        }
+    }
+
+    fn constrain_bool(&mut self, expr: &Expr, ty: &HulkType) {
+        if matches!(ty, HulkType::Unknown) {
+            if let ExprKind::Identifier { name } = &expr.kind {
+                if self.inferring_params.contains(name.as_str()) {
+                    self.param_constraints.insert(name.clone(), HulkType::Boolean);
+                }
             }
         }
     }
@@ -591,7 +698,8 @@ impl TypeChecker {
 
         match &u.op {
             UnaryOp::Neg => {
-                if ty != HulkType::Number {
+                self.constrain_number(&u.operand, &ty);
+                if !self.types.conforms(&ty, &HulkType::Number) {
                     self.errors.push(SemanticError::InvalidOperandType {
                         op: "-".into(), found: ty.name(), span: u.span,
                     });
@@ -599,7 +707,8 @@ impl TypeChecker {
                 HulkType::Number
             }
             UnaryOp::Not => {
-                if ty != HulkType::Boolean {
+                self.constrain_bool(&u.operand, &ty);
+                if !self.types.conforms(&ty, &HulkType::Boolean) {
                     self.errors.push(SemanticError::InvalidOperandType {
                         op: "!".into(), found: ty.name(), span: u.span,
                     });
@@ -771,8 +880,14 @@ impl TypeChecker {
                 match sym {
                     Some(s) => match s.kind {
                         super::symbol_table::SymbolKind::Function { ref params, ref return_type } => {
-                            self.check_call_args(name, params, &c.args, c.span);
-                            return_type.clone()
+                            // Refinar params Unknown/Object con los tipos concretos del call site
+                            self.refine_params_from_call(name, params, &c.args);
+                            // Releer la firma tras posible refinamiento
+                            let (params2, ret2) = self.functions.get(name)
+                                .map(|s| (s.params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(), s.return_type.clone()))
+                                .unwrap_or_else(|| (params.clone(), return_type.clone()));
+                            self.check_call_args(name, &params2, &c.args, c.span);
+                            ret2
                         }
                         super::symbol_table::SymbolKind::Type => {
                             // Llamada a constructor sin `new` — verificar aridad también
