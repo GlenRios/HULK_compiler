@@ -1,4 +1,7 @@
 pub mod context;
+pub mod coerce;
+pub mod dispatch;
+pub mod type_lowerer;
 pub mod objects;
 pub mod dump;
 pub mod error;
