@@ -17,6 +17,12 @@ impl<'ctx> ProgramVisitor<'ctx> for CodegenContext<'ctx> {
         self.build_type_layouts(&program.declarations)?;
 
         for decl in &program.declarations {
+            if let Decl::Type(td) = decl {
+                self.type_decls.insert(td.name.clone(), td.clone());
+            }
+        }
+
+        for decl in &program.declarations {
             self.visit_decl(decl)?;
         }
 
@@ -151,6 +157,17 @@ impl<'ctx> CodegenContext<'ctx> {
                 ctor_fn:       None,
                 parent:        td.parent.as_ref().map(|p| p.name().to_string()),
             });
+        }
+
+        // Precomputar conformantes por protocolo para despacho eficiente
+        let proto_names: Vec<String> = self.type_hierarchy.protocols.keys().cloned().collect();
+        for proto_name in &proto_names {
+            let conformers: Vec<(String, u32)> = self.type_registry.layouts
+                .iter()
+                .filter(|(name, _)| self.type_hierarchy.conforms_protocol(name, proto_name))
+                .map(|(name, layout)| (name.clone(), layout.type_tag))
+                .collect();
+            self.type_registry.protocol_conformers.insert(proto_name.clone(), conformers);
         }
 
         Ok(())

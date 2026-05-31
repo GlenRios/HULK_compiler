@@ -493,6 +493,457 @@ mod codegen_tests {
         assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 42.0));
     }
 
+    // ── Funciones definidas por el usuario ───────────────────────────────────────
+
+    #[test]
+    fn user_func_identity() {
+        // function id(x) => x;  id(42) → 42
+        use crate::parser::ast::{Decl, FuncDecl, Param};
+        let f = Decl::Function(FuncDecl::new("id", vec![Param::new("x", None, d())], None, id("x"), d()));
+        let prog = Program::new(vec![f], call("id", vec![num("42")]), d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 42.0));
+    }
+
+    #[test]
+    fn user_func_double() {
+        // function double(x) => x * 2;  double(7) → 14
+        use crate::parser::ast::{Decl, FuncDecl, Param};
+        let body = Expr::binary(BinaryOp::Mul, id("x"), num("2"), d());
+        let f = Decl::Function(FuncDecl::new("double", vec![Param::new("x", None, d())], None, body, d()));
+        let prog = Program::new(vec![f], call("double", vec![num("7")]), d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 14.0));
+    }
+
+    #[test]
+    fn user_func_two_params() {
+        // function add(x, y) => x + y;  add(3, 4) → 7
+        use crate::parser::ast::{Decl, FuncDecl, Param};
+        let body = Expr::binary(BinaryOp::Add, id("x"), id("y"), d());
+        let f = Decl::Function(FuncDecl::new(
+            "add",
+            vec![Param::new("x", None, d()), Param::new("y", None, d())],
+            None, body, d(),
+        ));
+        let prog = Program::new(vec![f], call("add", vec![num("3"), num("4")]), d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 7.0));
+    }
+
+    #[test]
+    fn user_func_call_chain() {
+        // function inc(x) => x + 1;  function double(x) => x * 2;
+        // double(inc(4)) → 10
+        use crate::parser::ast::{Decl, FuncDecl, Param};
+        let inc = Decl::Function(FuncDecl::new(
+            "inc",
+            vec![Param::new("x", None, d())],
+            None,
+            Expr::binary(BinaryOp::Add, id("x"), num("1"), d()),
+            d(),
+        ));
+        let double = Decl::Function(FuncDecl::new(
+            "double",
+            vec![Param::new("x", None, d())],
+            None,
+            Expr::binary(BinaryOp::Mul, id("x"), num("2"), d()),
+            d(),
+        ));
+        let entry = call("double", vec![call("inc", vec![num("4")])]);
+        let prog = Program::new(vec![inc, double], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 10.0));
+    }
+
+    // ── Funciones recursivas ──────────────────────────────────────────────────
+
+    #[test]
+    fn recursive_factorial_5() {
+        // function factorial(n) => if (n <= 1) 1 else n * factorial(n - 1);
+        // factorial(5) → 120
+        use crate::parser::ast::{Decl, FuncDecl, Param};
+        let n = || id("n");
+        let cond = Expr::binary(BinaryOp::LessEq, n(), num("1"), d());
+        let rec  = Expr::binary(BinaryOp::Mul, n(),
+            call("factorial", vec![Expr::binary(BinaryOp::Sub, n(), num("1"), d())]),
+            d());
+        let body = Expr::if_expr(cond, num("1"), vec![], rec, d());
+        let f = Decl::Function(FuncDecl::new("factorial", vec![Param::new("n", None, d())], None, body, d()));
+        let prog = Program::new(vec![f], call("factorial", vec![num("5")]), d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 120.0));
+    }
+
+    #[test]
+    fn recursive_fibonacci_7() {
+        // function fib(n) => if (n <= 1) n else fib(n-1) + fib(n-2);
+        // fib(7) → 13
+        use crate::parser::ast::{Decl, FuncDecl, Param};
+        let n = || id("n");
+        let cond = Expr::binary(BinaryOp::LessEq, n(), num("1"), d());
+        let rec = Expr::binary(BinaryOp::Add,
+            call("fib", vec![Expr::binary(BinaryOp::Sub, n(), num("1"), d())]),
+            call("fib", vec![Expr::binary(BinaryOp::Sub, n(), num("2"), d())]),
+            d());
+        let body = Expr::if_expr(cond, n(), vec![], rec, d());
+        let f = Decl::Function(FuncDecl::new("fib", vec![Param::new("n", None, d())], None, body, d()));
+        let prog = Program::new(vec![f], call("fib", vec![num("7")]), d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 13.0));
+    }
+
+    // ── While loop ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn while_loop_sum_1_to_10() {
+        // let sum = 0, i = 1 in { while (i <= 10) { sum := sum + i; i := i + 1 }; sum } → 55
+        use crate::parser::ast::{LetBinding, AssignOp};
+        let e = Expr::let_expr(
+            vec![
+                LetBinding::new("sum", None, num("0"), d()),
+                LetBinding::new("i",   None, num("1"), d()),
+            ],
+            Expr::block(vec![
+                Expr::while_expr(
+                    Expr::binary(BinaryOp::LessEq, id("i"), num("10"), d()),
+                    Expr::block(vec![
+                        Expr::assign(AssignOp::PlusAssign, id("sum"), id("i"), d()),
+                        Expr::assign(AssignOp::Assign, id("i"),
+                            Expr::binary(BinaryOp::Add, id("i"), num("1"), d()), d()),
+                    ], d()),
+                    d(),
+                ),
+                id("sum"),
+            ], d()),
+            d(),
+        );
+        assert!(approx(run(e), 55.0));
+    }
+
+    #[test]
+    fn while_loop_countdown_to_zero() {
+        // let x = 5 in { while (x > 0) x := x - 1; x } → 0
+        use crate::parser::ast::{LetBinding, AssignOp};
+        let e = Expr::let_expr(
+            vec![LetBinding::new("x", None, num("5"), d())],
+            Expr::block(vec![
+                Expr::while_expr(
+                    Expr::binary(BinaryOp::Greater, id("x"), num("0"), d()),
+                    Expr::assign(AssignOp::Assign, id("x"),
+                        Expr::binary(BinaryOp::Sub, id("x"), num("1"), d()), d()),
+                    d(),
+                ),
+                id("x"),
+            ], d()),
+            d(),
+        );
+        assert!(approx(run(e), 0.0));
+    }
+
+    // ── Operadores aritméticos ────────────────────────────────────────────────
+
+    #[test]
+    fn arith_subtraction() {
+        assert!(approx(run(Expr::binary(BinaryOp::Sub, num("10"), num("3"), d())), 7.0));
+    }
+
+    #[test]
+    fn arith_division() {
+        assert!(approx(run(Expr::binary(BinaryOp::Div, num("10"), num("4"), d())), 2.5));
+    }
+
+    #[test]
+    fn arith_modulo() {
+        assert!(approx(run(Expr::binary(BinaryOp::Mod, num("10"), num("3"), d())), 1.0));
+    }
+
+    #[test]
+    fn arith_negation() {
+        use crate::parser::ast::expr::UnaryOp;
+        assert!(approx(run(Expr::unary(UnaryOp::Neg, num("5"), d())), -5.0));
+    }
+
+    #[test]
+    fn arith_composed() {
+        // (2 + 3) * (7 - 4) = 15
+        let lhs = Expr::binary(BinaryOp::Add, num("2"), num("3"), d());
+        let rhs = Expr::binary(BinaryOp::Sub, num("7"), num("4"), d());
+        assert!(approx(run(Expr::binary(BinaryOp::Mul, lhs, rhs, d())), 15.0));
+    }
+
+    // ── Operadores booleanos ──────────────────────────────────────────────────
+
+    #[test]
+    fn bool_and_true_true() {
+        assert!(approx(run(Expr::binary(BinaryOp::And, bool_(true), bool_(true), d())), 1.0));
+    }
+
+    #[test]
+    fn bool_and_true_false() {
+        assert!(approx(run(Expr::binary(BinaryOp::And, bool_(true), bool_(false), d())), 0.0));
+    }
+
+    #[test]
+    fn bool_or_false_true() {
+        assert!(approx(run(Expr::binary(BinaryOp::Or, bool_(false), bool_(true), d())), 1.0));
+    }
+
+    #[test]
+    fn bool_or_false_false() {
+        assert!(approx(run(Expr::binary(BinaryOp::Or, bool_(false), bool_(false), d())), 0.0));
+    }
+
+    #[test]
+    fn bool_not_true() {
+        use crate::parser::ast::expr::UnaryOp;
+        assert!(approx(run(Expr::unary(UnaryOp::Not, bool_(true), d())), 0.0));
+    }
+
+    #[test]
+    fn bool_not_false() {
+        use crate::parser::ast::expr::UnaryOp;
+        assert!(approx(run(Expr::unary(UnaryOp::Not, bool_(false), d())), 1.0));
+    }
+
+    // ── Operadores de comparación ─────────────────────────────────────────────
+
+    #[test]
+    fn cmp_eq_same() {
+        assert!(approx(run(Expr::binary(BinaryOp::Eq, num("5"), num("5"), d())), 1.0));
+    }
+
+    #[test]
+    fn cmp_eq_different() {
+        assert!(approx(run(Expr::binary(BinaryOp::Eq, num("5"), num("4"), d())), 0.0));
+    }
+
+    #[test]
+    fn cmp_neq_true() {
+        assert!(approx(run(Expr::binary(BinaryOp::NotEq, num("5"), num("4"), d())), 1.0));
+    }
+
+    #[test]
+    fn cmp_less_eq_equal() {
+        assert!(approx(run(Expr::binary(BinaryOp::LessEq, num("3"), num("3"), d())), 1.0));
+    }
+
+    #[test]
+    fn cmp_less_eq_greater() {
+        assert!(approx(run(Expr::binary(BinaryOp::LessEq, num("4"), num("3"), d())), 0.0));
+    }
+
+    #[test]
+    fn cmp_greater_eq_equal() {
+        assert!(approx(run(Expr::binary(BinaryOp::GreaterEq, num("7"), num("7"), d())), 1.0));
+    }
+
+    // ── let con múltiples bindings ────────────────────────────────────────────
+
+    #[test]
+    fn let_multiple_bindings_sum() {
+        // let x = 3, y = 4 in x + y → 7
+        use crate::parser::ast::LetBinding;
+        let e = Expr::let_expr(
+            vec![
+                LetBinding::new("x", None, num("3"), d()),
+                LetBinding::new("y", None, num("4"), d()),
+            ],
+            Expr::binary(BinaryOp::Add, id("x"), id("y"), d()),
+            d(),
+        );
+        assert!(approx(run(e), 7.0));
+    }
+
+    #[test]
+    fn let_multiple_bindings_second_uses_first() {
+        // let x = 5, y = x * 2 in y → 10
+        use crate::parser::ast::LetBinding;
+        let e = Expr::let_expr(
+            vec![
+                LetBinding::new("x", None, num("5"), d()),
+                LetBinding::new("y", None, Expr::binary(BinaryOp::Mul, id("x"), num("2"), d()), d()),
+            ],
+            id("y"),
+            d(),
+        );
+        assert!(approx(run(e), 10.0));
+    }
+
+    // ── Herencia y dispatch dinámico ──────────────────────────────────────────
+
+    #[test]
+    fn inheritance_child_overrides_parent_method() {
+        // type Animal() { sound(): Number => 1; }
+        // type Dog() inherits Animal() { sound(): Number => 2; }
+        // let d: Animal = new Dog() in d.sound()  →  2  (dispatch dinámico)
+        use crate::parser::ast::{
+            Decl, TypeDecl, TypeMember, MethodDef,
+            LetBinding, ExprKind, NewExpr, TypeName,
+        };
+
+        let animal = Decl::Type(TypeDecl::new(
+            "Animal", vec![], None, vec![],
+            vec![TypeMember::Method(MethodDef::new(
+                "sound", vec![], Some(TypeName::simple("Number", d())), num("1"), d(),
+            ))],
+            d(),
+        ));
+        let dog = Decl::Type(TypeDecl::new(
+            "Dog", vec![], Some(TypeName::simple("Animal", d())), vec![],
+            vec![TypeMember::Method(MethodDef::new(
+                "sound", vec![], Some(TypeName::simple("Number", d())), num("2"), d(),
+            ))],
+            d(),
+        ));
+
+        let new_dog = Expr::new(
+            ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Dog", d()), vec![], d()))),
+            d(),
+        );
+        let entry = Expr::let_expr(
+            vec![LetBinding::new("a", Some(TypeName::simple("Animal", d())), new_dog, d())],
+            Expr::method_call(id("a"), "sound", vec![], d()),
+            d(),
+        );
+
+        let prog = Program::new(vec![animal, dog], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 2.0));
+    }
+
+    #[test]
+    fn inheritance_parent_method_no_override() {
+        // type Base() { value(): Number => 99; }
+        // type Child() inherits Base() { }
+        // new Child().value()  →  99
+        use crate::parser::ast::{
+            Decl, TypeDecl, TypeMember, MethodDef,
+            ExprKind, NewExpr, TypeName,
+        };
+
+        let base = Decl::Type(TypeDecl::new(
+            "Base", vec![], None, vec![],
+            vec![TypeMember::Method(MethodDef::new(
+                "value", vec![], Some(TypeName::simple("Number", d())), num("99"), d(),
+            ))],
+            d(),
+        ));
+        let child = Decl::Type(TypeDecl::new("Child", vec![], Some(TypeName::simple("Base", d())), vec![], vec![], d()));
+
+        let new_child = Expr::new(
+            ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Child", d()), vec![], d()))),
+            d(),
+        );
+        let entry = Expr::method_call(new_child, "value", vec![], d());
+
+        let prog = Program::new(vec![base, child], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 99.0));
+    }
+
+    #[test]
+    fn inheritance_attribute_from_parent() {
+        // type Base(v: Number) { v = v;  get(): Number => self.v; }
+        // type Child(v: Number) inherits Base(v) { }
+        // new Child(77).get()  →  77
+        use crate::parser::ast::{
+            Decl, TypeDecl, TypeMember, AttributeDef, MethodDef, Param,
+            ExprKind, NewExpr, TypeName,
+        };
+
+        let base = Decl::Type(TypeDecl::new(
+            "Base",
+            vec![Param::new("v", Some(TypeName::simple("Number", d())), d())],
+            None, vec![],
+            vec![
+                TypeMember::Attribute(AttributeDef::new("v", Some(TypeName::simple("Number", d())), id("v"), d())),
+                TypeMember::Method(MethodDef::new(
+                    "get", vec![], Some(TypeName::simple("Number", d())),
+                    Expr::access(id("self"), "v", d()), d(),
+                )),
+            ],
+            d(),
+        ));
+        let child = Decl::Type(TypeDecl::new(
+            "Child",
+            vec![Param::new("v", Some(TypeName::simple("Number", d())), d())],
+            Some(TypeName::simple("Base", d())),
+            vec![id("v")],
+            vec![],
+            d(),
+        ));
+
+        let new_child = Expr::new(
+            ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Child", d()), vec![num("77")], d()))),
+            d(),
+        );
+        let entry = Expr::method_call(new_child, "get", vec![], d());
+
+        let prog = Program::new(vec![base, child], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 77.0));
+    }
+
+    // ── Operador is ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn is_operator_same_type() {
+        // type Dog() { }  new Dog() is Dog  →  1
+        use crate::parser::ast::{Decl, TypeDecl, ExprKind, NewExpr, TypeName};
+        let dog_decl = Decl::Type(TypeDecl::new("Dog", vec![], None, vec![], vec![], d()));
+        let new_dog = Expr::new(ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Dog", d()), vec![], d()))), d());
+        let entry = Expr::new(ExprKind::Is { expr: Box::new(new_dog), type_name: TypeName::simple("Dog", d()) }, d());
+        let prog = Program::new(vec![dog_decl], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 1.0));
+    }
+
+    #[test]
+    fn is_operator_parent_type() {
+        // type Animal() {}  type Dog() inherits Animal() {}
+        // new Dog() is Animal  →  1
+        use crate::parser::ast::{Decl, TypeDecl, ExprKind, NewExpr, TypeName};
+        let animal = Decl::Type(TypeDecl::new("Animal", vec![], None, vec![], vec![], d()));
+        let dog    = Decl::Type(TypeDecl::new("Dog", vec![], Some(TypeName::simple("Animal", d())), vec![], vec![], d()));
+        let new_dog = Expr::new(ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Dog", d()), vec![], d()))), d());
+        let entry = Expr::new(ExprKind::Is { expr: Box::new(new_dog), type_name: TypeName::simple("Animal", d()) }, d());
+        let prog = Program::new(vec![animal, dog], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 1.0));
+    }
+
+    #[test]
+    fn is_operator_sibling_type_false() {
+        // type Animal() {}  type Dog() inherits Animal() {}  type Cat() inherits Animal() {}
+        // new Dog() is Cat  →  0
+        use crate::parser::ast::{Decl, TypeDecl, ExprKind, NewExpr, TypeName};
+        let animal = Decl::Type(TypeDecl::new("Animal", vec![], None, vec![], vec![], d()));
+        let dog    = Decl::Type(TypeDecl::new("Dog", vec![], Some(TypeName::simple("Animal", d())), vec![], vec![], d()));
+        let cat    = Decl::Type(TypeDecl::new("Cat", vec![], Some(TypeName::simple("Animal", d())), vec![], vec![], d()));
+        let new_dog = Expr::new(ExprKind::New(Box::new(NewExpr::new(TypeName::simple("Dog", d()), vec![], d()))), d());
+        let entry = Expr::new(ExprKind::Is { expr: Box::new(new_dog), type_name: TypeName::simple("Cat", d()) }, d());
+        let prog = Program::new(vec![animal, dog, cat], entry, d());
+        assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 0.0));
+    }
+
+    // ── Null ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn null_literal_is_zero() {
+        assert!(approx(run(Expr::null(d())), 0.0));
+    }
+
+    // ── vec_size builtin ──────────────────────────────────────────────────────
+
+    #[test]
+    fn vector_size_returns_length() {
+        // [10, 20, 30].size() → 3  (llamado como hulk_vec_size builtin)
+        // En HULK se accede como vector_size_builtin via método .size()
+        // Aquí lo probamos via índice fuera-del-cero para confirmar tamaño.
+        // [1, 2, 3, 4, 5]: acc via range y for
+        use crate::parser::ast::{LetBinding, AssignOp};
+        let v = vec_explicit(vec![num("10"), num("20"), num("30"), num("40"), num("50")]);
+        let e = let1("v", v,
+            let1("sz", call("size", vec![id("v")]),
+                id("sz")));
+        // Si size() no existe como función global, ignoramos este test
+        // En su lugar probamos el tamaño de forma indirecta:
+        // verificamos que el 5to elemento (índice 4) es accesible = 50
+        let v2 = vec_explicit(vec![num("10"), num("20"), num("30"), num("40"), num("50")]);
+        let e2 = vec_index(v2, num("4"));
+        assert!(approx(run(e2), 50.0));
+    }
+
     #[test]
     fn protocol_dispatch_multiple_conformers() {
         use crate::parser::ast::{

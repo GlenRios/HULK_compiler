@@ -279,9 +279,9 @@ impl TypeHierarchy {
     //   → LCA(LCA(A, B), C)
 
     pub fn lca(&self, a: &HulkType, b: &HulkType) -> HulkType {
-        // Never no participa en LCA
-        if a.is_never() { return b.clone(); }
-        if b.is_never() { return a.clone(); }
+        // Never y Unknown son transparentes: lca(Unknown, T) = T
+        if a.is_never() || matches!(a, HulkType::Unknown) { return b.clone(); }
+        if b.is_never() || matches!(b, HulkType::Unknown) { return a.clone(); }
         if a == b       { return a.clone(); }
 
         let ancestors_a = self.ancestors(a);

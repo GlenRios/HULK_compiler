@@ -1,6 +1,8 @@
 use inkwell::values::{FloatValue, IntValue, PointerValue};
 use crate::semantic::HulkType;
 
+pub const ELEM_SIZE_BYTES: u64 = 8;
+
 #[derive(Debug, Clone, Copy)]
 pub enum CgValue<'ctx> {
     Number(FloatValue<'ctx>),    // f64  — HULK Number
