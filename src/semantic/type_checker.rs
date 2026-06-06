@@ -427,7 +427,7 @@ impl TypeChecker {
                     let val_ty = self.check_expr(&attr.value);
                     self.in_initializer = false;
 
-                    if let Some(ann) = &attr.type_ann {
+                    let final_ty = if let Some(ann) = &attr.type_ann {
                         let ann_ty = self.resolve_type_name(ann);
                         if !self.types.conforms(&val_ty, &ann_ty) {
                             self.errors.push(SemanticError::TypeMismatch {
@@ -436,6 +436,14 @@ impl TypeChecker {
                                 span:     attr.span,
                             });
                         }
+                        ann_ty
+                    } else {
+                        val_ty
+                    };
+                    // Update the attribute type with the inferred/annotated type so
+                    // that codegen can load fields with the correct LLVM type.
+                    if let Some(info) = self.types.types.get_mut(&t.name) {
+                        info.attributes.insert(attr.name.clone(), final_ty);
                     }
                 }
 
@@ -471,6 +479,13 @@ impl TypeChecker {
                                 found:    actual_ret.name(),
                                 span:     method.span,
                             });
+                        }
+                    } else if !actual_ret.is_never() && !matches!(actual_ret, HulkType::Unknown) {
+                        // Propagate inferred return type back so codegen uses the right LLVM type.
+                        if let Some(info) = self.types.types.get_mut(&t.name) {
+                            if let Some(sig) = info.methods.get_mut(&method.name) {
+                                sig.return_type = actual_ret;
+                            }
                         }
                     }
 
