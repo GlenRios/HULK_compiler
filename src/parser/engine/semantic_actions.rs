@@ -558,7 +558,31 @@ pub fn reduce(
                 }
                 Some(Symbol::T(Tok::String)) => {
                     let (v, s) = a!(0).into_lexeme()?;
-                    StackValue::Expr(Expr::string(v, s))
+                    // The lexer includes surrounding quotes in the lexeme; strip them
+                    // and process escape sequences (\n, \t, \", \\).
+                    let content = if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+                        let raw = &v[1..v.len() - 1];
+                        let mut out = String::with_capacity(raw.len());
+                        let mut chars = raw.chars().peekable();
+                        while let Some(c) = chars.next() {
+                            if c == '\\' {
+                                match chars.next() {
+                                    Some('n')  => out.push('\n'),
+                                    Some('t')  => out.push('\t'),
+                                    Some('"')  => out.push('"'),
+                                    Some('\\') => out.push('\\'),
+                                    Some(o)    => { out.push('\\'); out.push(o); }
+                                    None       => out.push('\\'),
+                                }
+                            } else {
+                                out.push(c);
+                            }
+                        }
+                        out
+                    } else {
+                        v
+                    };
+                    StackValue::Expr(Expr::string(content, s))
                 }
                 Some(Symbol::T(Tok::Char)) => {
                     let (v, s) = a!(0).into_lexeme()?;
