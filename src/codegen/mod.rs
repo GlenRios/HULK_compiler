@@ -20,3 +20,4 @@ mod tests;
 pub use dump::emit_ir_string;
 pub use error::{CodegenError, CodegenResult};
 pub use jit::execute_program_jit;
+pub use jit::compile_to_binary;
