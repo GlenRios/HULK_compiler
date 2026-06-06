@@ -94,31 +94,15 @@ impl<'ctx> CodegenContext<'ctx> {
             "print" => {
                 let arg_expr = &call.args[0];
                 let arg_val  = self.visit_expr(arg_expr)?;
-                let str_ptr  = if let CgValue::Object(obj_ptr) = arg_val {
-                    let expr_ty = self.get_expr_type(arg_expr)?;
-                    if let HulkType::UserDefined(ref type_name) = expr_ty {
-                        if self.type_registry.method_slot(type_name, "toString").is_some() {
-                            let (fn_ptr, fn_type, _) =
-                                self.method_dispatch(obj_ptr, type_name, "toString")?;
-                            self.builder
-                                .build_indirect_call(fn_type, fn_ptr, &[obj_ptr.into()], "tostr")
-                                .map_err(|e| CodegenError::Builder(e.to_string()))?
-                                .try_as_basic_value().left()
-                                .ok_or_else(|| CodegenError::Unsupported(
-                                    "toString() no retornó valor".into()))?
-                                .into_pointer_value()
-                        } else {
-                            self.builder
-                                .build_global_string_ptr(&format!("<{}>", type_name), "obj_str")
-                                .map_err(|e| CodegenError::Builder(e.to_string()))?
-                                .as_pointer_value()
-                        }
-                    } else {
-                        self.builder
-                            .build_global_string_ptr("<Object>", "obj_str")
-                            .map_err(|e| CodegenError::Builder(e.to_string()))?
-                            .as_pointer_value()
-                    }
+                let str_ptr  = if let CgValue::Object(_) = arg_val {
+                    let label = match self.get_expr_type(arg_expr)? {
+                        HulkType::UserDefined(n) => format!("<{}>", n),
+                        _ => "<Object>".to_string(),
+                    };
+                    self.builder
+                        .build_global_string_ptr(&label, "obj_str")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .as_pointer_value()
                 } else {
                     self.cgvalue_to_str(arg_val)?
                 };

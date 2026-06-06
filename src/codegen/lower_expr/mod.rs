@@ -3,7 +3,7 @@ mod control_flow;
 mod calls;
 mod collections;
 
-use inkwell::values::BasicMetadataValueEnum;
+use inkwell::{IntPredicate, values::BasicMetadataValueEnum};
 
 use crate::parser::ast::{
     AccessExpr, AssignExpr, AssignOp, BinaryExpr, BinaryOp,
@@ -94,6 +94,17 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
 
             // ── Identificador ─────────────────────────────────────────────────
             ExprKind::Identifier { name } => {
+                // PI y E se emiten como ConstantFP para que el IRBuilder
+                // pliegue la aritmética sobre ellas en tiempo de compilación.
+                match name.as_str() {
+                    "PI" => return Ok(CgValue::Number(
+                        self.f64_type().const_float(std::f64::consts::PI)
+                    )),
+                    "E" => return Ok(CgValue::Number(
+                        self.f64_type().const_float(std::f64::consts::E)
+                    )),
+                    _ => {}
+                }
                 let slot = self
                     .symbols
                     .get(name)
@@ -270,7 +281,60 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                 self.load_place(&Place { ptr: elem_ptr, hulk_ty: elem_ty }, "elem")
             }
             ExprKind::Is { expr: inner, type_name } => self.lower_is(inner, type_name),
-            ExprKind::As { expr: inner, .. }        => self.visit_expr(inner),
+            ExprKind::As { expr: inner, type_name } => {
+                let obj_val = self.visit_expr(inner)?;
+                let obj_ptr = match obj_val {
+                    CgValue::Object(p) => p,
+                    other => return Ok(other),
+                };
+
+                let target = type_name.name().to_string();
+                if target == "Object" {
+                    return Ok(CgValue::Object(obj_ptr));
+                }
+
+                let (min_tag, max_tag) = match self.type_registry.layouts.get(&target) {
+                    Some(layout) => (layout.type_tag, layout.max_tag),
+                    None => return Ok(CgValue::Object(obj_ptr)),
+                };
+
+                let i32_ty      = self.context.i32_type();
+                let runtime_tag = self.builder
+                    .build_load(i32_ty, obj_ptr, "as_tag")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .into_int_value();
+                let ge = self.builder
+                    .build_int_compare(IntPredicate::UGE, runtime_tag,
+                        i32_ty.const_int(min_tag as u64, false), "as_ge")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                let le = self.builder
+                    .build_int_compare(IntPredicate::ULE, runtime_tag,
+                        i32_ty.const_int(max_tag as u64, false), "as_le")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                let ok = self.builder.build_and(ge, le, "as_ok")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let fn_cur  = self.current_fn()?;
+                let ok_bb   = self.context.append_basic_block(fn_cur, "as_ok_bb");
+                let fail_bb = self.context.append_basic_block(fn_cur, "as_fail_bb");
+                self.builder.build_conditional_branch(ok, ok_bb, fail_bb)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                self.builder.position_at_end(fail_bb);
+                let msg = format!("HULK runtime error: downcast to '{}' failed", target);
+                let msg_ptr = self.builder
+                    .build_global_string_ptr(&msg, "as_err")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .as_pointer_value();
+                let err_fn = self.require_fn("hulk_type_error")?;
+                self.builder.build_call(err_fn, &[msg_ptr.into()], "")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                self.builder.build_unreachable()
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                self.builder.position_at_end(ok_bb);
+                Ok(CgValue::Object(obj_ptr))
+            }
             ExprKind::Vector(ve)                    => self.lower_vector(ve),
             ExprKind::Base => Err(CodegenError::Unsupported(
                 "base aun no implementado".to_string())),
