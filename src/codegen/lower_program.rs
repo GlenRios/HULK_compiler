@@ -36,9 +36,15 @@ impl<'ctx> ProgramVisitor<'ctx> for CodegenContext<'ctx> {
         self.push_scope();
 
         let entry_value = self.visit_expr(&program.entry)?;
+        // __hulk_entry returns f64 for JIT convenience.
+        // If the top-level expression is non-numeric (e.g. a block ending with
+        // print calls), return 0.0 — the actual output comes from hulk_print.
         let ret = match entry_value {
-            super::value::CgValue::Void => self.f64_type().const_float(0.0),
-            other => self.require_number(other)?,
+            super::value::CgValue::Number(f) => f,
+            super::value::CgValue::Bool(b) => self.builder
+                .build_unsigned_int_to_float(b, self.f64_type(), "ret_bool")
+                .map_err(|e| CodegenError::Builder(e.to_string()))?,
+            _ => self.f64_type().const_float(0.0),
         };
 
         if !self.is_current_block_terminated() {
@@ -162,11 +168,14 @@ impl<'ctx> CodegenContext<'ctx> {
         // Precomputar conformantes por protocolo para despacho eficiente
         let proto_names: Vec<String> = self.type_hierarchy.protocols.keys().cloned().collect();
         for proto_name in &proto_names {
-            let conformers: Vec<(String, u32)> = self.type_registry.layouts
+            let mut conformers: Vec<(String, u32)> = self.type_registry.layouts
                 .iter()
                 .filter(|(name, _)| self.type_hierarchy.conforms_protocol(name, proto_name))
                 .map(|(name, layout)| (name.clone(), layout.type_tag))
                 .collect();
+            // Ordenar por nombre para que el IR sea determinista entre compilaciones.
+            // HashMap::iter() no garantiza orden; sin esto el IR varía entre ejecuciones.
+            conformers.sort_by(|(a, _), (b, _)| a.cmp(b));
             self.type_registry.protocol_conformers.insert(proto_name.clone(), conformers);
         }
 
