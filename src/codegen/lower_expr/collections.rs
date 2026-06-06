@@ -1,4 +1,4 @@
-use inkwell::IntPredicate;
+use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::parser::ast::{TypeName, VectorExpr};
 use crate::semantic::HulkType;
@@ -148,7 +148,26 @@ impl<'ctx> CodegenContext<'ctx> {
                         .map_err(|e| CodegenError::Builder(e.to_string()))?.into_float_value();
                     let diff = self.builder.build_float_sub(end, start, "rdiff")
                         .map_err(|e| CodegenError::Builder(e.to_string()))?;
-                    self.builder.build_float_to_signed_int(diff, i32_ty, "rcount")
+                    // Limitar diff a [0.0, i32::MAX] antes de fptosi.
+                    // ULT (sin orden) captura valores negativos y NaN → 0.
+                    // Sin este clamp, fptosi sobre valores fuera de rango produce poison.
+                    let zero_f  = self.f64_type().const_float(0.0);
+                    let max_f   = self.f64_type().const_float(i32::MAX as f64);
+                    let is_low  = self.builder
+                        .build_float_compare(FloatPredicate::ULT, diff, zero_f, "diff_low")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    let nn      = self.builder
+                        .build_select(is_low, zero_f, diff, "diff_nn")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .into_float_value();
+                    let is_high = self.builder
+                        .build_float_compare(FloatPredicate::OGT, nn, max_f, "diff_high")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    let clamped = self.builder
+                        .build_select(is_high, max_f, nn, "diff_clamp")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .into_float_value();
+                    self.builder.build_float_to_signed_int(clamped, i32_ty, "rcount")
                         .map_err(|e| CodegenError::Builder(e.to_string()))?
                 } else {
                     let size_fn  = self.require_fn("hulk_vec_size")?;

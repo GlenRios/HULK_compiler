@@ -105,23 +105,28 @@ impl<'ctx> CodegenContext<'ctx> {
             .cloned()
             .unwrap_or_default();
 
-        let param_sig: Option<FuncSignature> = conforming.first()
-            .and_then(|(name, _)| {
-                let mut cur = name.clone();
-                loop {
-                    if let Some(ti) = self.type_hierarchy.types.get(&cur) {
-                        if let Some(sig) = ti.methods.get(method_name) {
-                            return Some(sig.clone());
-                        }
-                        match &ti.parent {
-                            Some(p) => cur = p.clone(),
-                            None    => return None,
-                        }
-                    } else {
-                        return None;
-                    }
-                }
-            });
+        if conforming.is_empty() {
+            return Err(CodegenError::Unsupported(
+                format!("protocolo '{}': sin tipos conformantes registrados en este módulo", proto_name)));
+        }
+
+        // Precomputar (tipo_impl, firma) antes del bucle de emisión.
+        // type_hierarchy (&self) y builder (&mut self) no pueden coexistir
+        // en el mismo cuerpo de bucle. Además, el método a llamar pertenece
+        // al tipo que lo define, no necesariamente al conformante declarado.
+        let case_data: Vec<(String, FuncSignature)> = conforming.iter()
+            .map(|(type_name, _)| {
+                let impl_type = self.type_hierarchy
+                    .find_method_impl_type(type_name, method_name)
+                    .unwrap_or_else(|| type_name.clone());
+                let sig = self.type_hierarchy.types
+                    .get(&impl_type)
+                    .and_then(|ti| ti.methods.get(method_name).cloned())
+                    .ok_or_else(|| CodegenError::Unsupported(
+                        format!("método '{}' no encontrado en tipo '{}'", method_name, type_name)))?;
+                Ok((impl_type, sig))
+            })
+            .collect::<CodegenResult<_>>()?;
 
         let i32_ty = self.context.i32_type();
         let runtime_tag = self.builder
@@ -154,19 +159,18 @@ impl<'ctx> CodegenContext<'ctx> {
 
         let mut phi_incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock<'ctx>)> = vec![];
 
-        for (_, case_bb, type_name) in &case_blocks {
+        for ((_, case_bb, _type_name), (impl_type, case_sig)) in case_blocks.iter().zip(case_data.iter()) {
             self.builder.position_at_end(*case_bb);
 
             let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![obj_ptr.into()];
             for (i, arg_val) in user_args.iter().enumerate() {
-                let expected = param_sig.as_ref()
-                    .and_then(|s| s.params.get(i))
+                let expected = case_sig.params.get(i)
                     .map(|(_, t)| t.clone())
                     .unwrap_or(HulkType::Object);
                 call_args.push(self.coerce_arg(arg_val.clone(), &expected)?);
             }
 
-            let fn_name = format!("__hulk_method_{}_{}", type_name, method_name);
+            let fn_name = format!("__hulk_method_{}_{}", impl_type, method_name);
             let fn_val  = self.module.get_function(&fn_name)
                 .ok_or_else(|| CodegenError::Unsupported(
                     format!("función '{}' no encontrada en módulo", fn_name)))?;
