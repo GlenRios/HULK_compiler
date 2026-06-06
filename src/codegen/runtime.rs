@@ -95,6 +95,10 @@ impl<'ctx> CodegenContext<'ctx> {
         // ── String equality ───────────────────────────────────────────────
         self.declare_extern("hulk_str_eq",
             bool_t.fn_type(&[ptr_t.into(), ptr_t.into()], false));
+
+        // ── Downcast failure handler ──────────────────────────────────────
+        self.declare_extern("hulk_type_error",
+            void_t.fn_type(&[ptr_t.into()], false));
     }
 
     // ── Accesores de conveniencia ─────────────────────────────────────────────
@@ -131,8 +135,7 @@ pub extern "C" fn hulk_print(s: *const c_char) {
     println!("{}", msg.to_string_lossy());
 }
 
-/// Número aleatorio en [0.0, 1.0].
-/// Usa rand() de libc normalizado — suficiente para uso educativo.
+/// Número aleatorio uniforme en [0.0, 1.0].
 #[unsafe(no_mangle)]
 pub extern "C" fn hulk_rand() -> f64 {
     unsafe extern "C" { fn rand() -> c_int; }
@@ -148,8 +151,7 @@ pub extern "C" fn hulk_str_from_number(n: f64) -> *mut c_char {
     } else {
         format!("{}", n)
     };
-    // into_raw() transfiere la propiedad. En un compilador real habría un GC;
-    // aquí se acepta el leak porque los programas de compilador son cortos.
+    // into_raw() transfiere la propiedad al caller; la memoria no se libera.
     CString::new(s).unwrap().into_raw()
 }
 
@@ -190,8 +192,14 @@ pub extern "C" fn hulk_vec_alloc(count: i32, _element_size: i32) -> *mut u8 {
 }
 
 /// Devuelve puntero al elemento i: ptr + 8 + i*8.
+/// Aborta con mensaje si el índice está fuera de rango.
 #[unsafe(no_mangle)]
 pub extern "C" fn hulk_vec_get(vec: *mut u8, index: i32, _element_size: i32) -> *mut u8 {
+    let size = unsafe { *(vec as *const i64) };
+    if index < 0 || (index as i64) >= size {
+        eprintln!("HULK error en tiempo de ejecución: índice {} fuera de rango [0, {})", index, size);
+        std::process::abort();
+    }
     unsafe { vec.add(8 + (index as usize) * 8) }
 }
 
@@ -226,8 +234,17 @@ pub extern "C" fn hulk_range_current(range: *mut u8) -> f64 {
     unsafe { *(range as *const f64).add(2) }
 }
 
-/// Compara dos strings por contenido (operador ==).
-/// La spec HULK especifica igualdad de valor para String, no identidad de puntero.
+/// Imprime un mensaje de error de tipo y aborta. Usado por downcast fallido ('as').
+#[unsafe(no_mangle)]
+pub extern "C" fn hulk_type_error(msg: *const c_char) {
+    if !msg.is_null() {
+        let s = unsafe { CStr::from_ptr(msg) };
+        eprintln!("{}", s.to_string_lossy());
+    }
+    std::process::abort();
+}
+
+/// Compara dos strings por contenido (operador ==), no por identidad de puntero.
 #[unsafe(no_mangle)]
 pub extern "C" fn hulk_str_eq(a: *const c_char, b: *const c_char) -> bool {
     ptr_to_string(a) == ptr_to_string(b)
