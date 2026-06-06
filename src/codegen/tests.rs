@@ -1023,3 +1023,227 @@ mod codegen_tests {
         assert!(approx(execute_program_jit(&prog).expect("JIT falló"), 25.0));
     }
 }
+
+// ── Tests de integración con parser real (programas del evaluador del curso) ──
+
+#[cfg(test)]
+mod profe_tests {
+    use crate::codegen::jit::execute_program_jit;
+    use crate::lexer::lexer::Lexer;
+    use crate::lexer::master_nfa::MasterNFA;
+    use crate::lexer::token::TokenType;
+    use crate::lexer::token_definition::TokenDefinition;
+    use crate::parser::engine::ParserDriver;
+
+    /// Parsea source HULK y ejecuta vía JIT. Falla si hay error léxico, sintáctico o de codegen.
+    fn jit(source: &str) -> f64 {
+        let master = MasterNFA::from_token_definitions(
+            &TokenDefinition::default_token_definitions(),
+        );
+        let mut lex = Lexer::new(source, master);
+        let tokens  = lex.tokenize();
+
+        // Sin errores léxicos
+        assert!(
+            tokens.iter().all(|t| t.token_type != TokenType::ERROR),
+            "error léxico en: {}", source
+        );
+
+        let driver  = ParserDriver::new();
+        let program = driver.parse(tokens.into_iter())
+            .expect("error de parseo");
+
+        execute_program_jit(&program).expect("JIT falló")
+    }
+
+    fn approx(a: f64, b: f64) -> bool { (a - b).abs() < 1e-9 }
+
+    #[test]
+    fn profe_hello() {
+        // print("Hello, World!") → 0.0 (no panics, string sin comillas)
+        assert!(approx(jit(r#"print("Hello, World!");"#), 0.0));
+    }
+
+    #[test]
+    fn profe_arithmetic() {
+        let src = r#"{
+            if (2 + 3 * 4 == 14) print("ok") else print("fail");
+            if (10 % 3 == 1) print("ok") else print("fail");
+            if (2 ^ 10 == 1024) print("ok") else print("fail");
+            if (10 / 2 == 5) print("ok") else print("fail");
+            if (!(3 < 2)) print("ok") else print("fail");
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_let_binding() {
+        let src = r#"let x = 10, y = 20 in {
+            if (x + y == 30) print("ok") else print("fail");
+            let z = x * y in
+                if (z == 200) print("ok") else print("fail");
+        };"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_strings() {
+        let src = r#"{
+            print("Hello" @ ", " @ "World!");
+            print("foo" @@ "bar");
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_while_loop() {
+        let src = r#"let i = 0 in
+        let result = 0 in {
+            while (i < 5) {
+                result := result + i;
+                i := i + 1;
+            };
+            if (result == 10) print("ok") else print("fail");
+            if (i == 5) print("ok") else print("fail");
+        };"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_conditionals() {
+        let src = r#"
+        function classify(n: Number): String {
+            if (n < 0) "negative"
+            elif (n == 0) "zero"
+            else "positive";
+        }
+        {
+            print(classify(-5));
+            print(classify(0));
+            print(classify(42));
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_functions() {
+        let src = r#"
+        function double(x: Number): Number {
+            x * 2;
+        }
+        function greet(name: String): String {
+            "Hello, " @ name @ "!";
+        }
+        function fib(n: Number): Number {
+            if (n <= 1) n else fib(n-1) + fib(n-2);
+        }
+        {
+            if (double(7) == 14) print("ok") else print("fail");
+            if (fib(10) == 55) print("ok") else print("fail");
+            print(greet("HULK"));
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_annotated() {
+        let src = r#"
+        function add(x: Number, y: Number): Number {
+            x + y;
+        }
+        function negate(b: Boolean): Boolean {
+            !b;
+        }
+        {
+            if (add(3, 4) == 7) print("ok") else print("fail");
+            if (negate(false)) print("ok") else print("fail");
+            if (add(0, 0) == 0) print("ok") else print("fail");
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_builtins() {
+        let src = r#"{
+            if (sqrt(9) == 3) print("ok") else print("fail");
+            if (sqrt(4) == 2) print("ok") else print("fail");
+            if (sin(0) == 0) print("ok") else print("fail");
+            if (cos(0) == 1) print("ok") else print("fail");
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_inference() {
+        let src = r#"
+        function square(x) {
+            x * x;
+        }
+        function add_one(x) {
+            x + 1;
+        }
+        {
+            if (square(5) == 25) print("ok") else print("fail");
+            if (square(3) == 9) print("ok") else print("fail");
+            if (add_one(41) == 42) print("ok") else print("fail");
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_basic_class() {
+        let src = r#"
+        type Point(x_val: Number, y_val: Number) {
+            x: Number = x_val;
+            y: Number = y_val;
+            getX(): Number => self.x;
+            getY(): Number => self.y;
+            sum(): Number => self.x + self.y;
+        }
+        let p = new Point(3, 4) in {
+            if (p.getX() == 3) print("ok") else print("fail");
+            if (p.getY() == 4) print("ok") else print("fail");
+            if (p.sum() == 7) print("ok") else print("fail");
+        };"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_inheritance() {
+        let src = r#"
+        type Animal(n: String) {
+            name: String = n;
+            sound(): String { "..."; }
+        }
+        type Dog(n: String) inherits Animal(n) {
+            sound(): String { "Woof"; }
+        }
+        type Cat(n: String) inherits Animal(n) {
+            sound(): String { "Meow"; }
+        }
+        {
+            let d = new Dog("Rex") in print(d.sound());
+            let c = new Cat("Whiskers") in print(c.sound());
+            let a: Animal = new Dog("Buddy") in print(a.sound());
+        }"#;
+        assert!(approx(jit(src), 0.0));
+    }
+
+    #[test]
+    fn profe_mutation() {
+        let src = r#"
+        type Counter(start: Number) {
+            val = start;
+            current(): Number => self.val;
+            increment() => self.val := self.val + 1;
+            add(n: Number) => self.val := self.val + n;
+        }
+        let c = new Counter(0) in {
+            c.increment();
+            c.increment();
+            c.add(3);
+            if (c.current() == 5) print("ok") else print("fail");
+        };"#;
+        assert!(approx(jit(src), 0.0));
+    }
+}
