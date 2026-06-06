@@ -39,7 +39,10 @@ impl<'ctx> CodegenContext<'ctx> {
                 Ok(self.builder
                     .build_call(f, &[n.into()], "num_to_str")
                     .map_err(|e| CodegenError::Builder(e.to_string()))?
-                    .try_as_basic_value().left().unwrap().into_pointer_value())
+                    .try_as_basic_value().left()
+                    .ok_or_else(|| CodegenError::Unsupported(
+                        "hulk_str_from_number sin valor de retorno".into()))?
+                    .into_pointer_value())
             }
             CgValue::Bool(b) => {
                 let true_str  = self.builder.build_global_string_ptr("true",  "true_s")
@@ -56,7 +59,14 @@ impl<'ctx> CodegenContext<'ctx> {
                 Ok(self.builder.build_global_string_ptr("null", "null_s")
                     .map_err(|e| CodegenError::Builder(e.to_string()))?.as_pointer_value())
             }
-            _ => Err(CodegenError::Unsupported("tipo no convertible a string todavia".to_string())),
+            CgValue::Vector(_) => {
+                Ok(self.builder.build_global_string_ptr("[Vector]", "vec_s")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?.as_pointer_value())
+            }
+            CgValue::Object(_) => Err(CodegenError::Unsupported(
+                "no se puede convertir Object a String sin conocer su tipo — usa print()".into())),
+            CgValue::Void => Err(CodegenError::Unsupported(
+                "void en contexto de string".into())),
         }
     }
 
@@ -120,6 +130,10 @@ impl<'ctx> CodegenContext<'ctx> {
             HulkType::Boolean => match call_site.try_as_basic_value().left() {
                 Some(v) => CgValue::Bool(v.into_int_value()),
                 None    => CgValue::Bool(self.bool_type().const_int(0, false)),
+            },
+            HulkType::StringT => match call_site.try_as_basic_value().left() {
+                Some(v) => CgValue::Str(v.into_pointer_value()),
+                None    => CgValue::Null,
             },
             HulkType::Null | HulkType::Unknown => CgValue::Void,
             _ => match call_site.try_as_basic_value().left() {
