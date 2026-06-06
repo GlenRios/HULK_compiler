@@ -13,4 +13,6 @@ Cargo.lock
 *.exe
 
 /todo/
-/notes/
+/notes/hulk_runtime.a
+/output
+output.exe
