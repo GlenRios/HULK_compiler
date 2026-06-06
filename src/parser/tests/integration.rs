@@ -253,7 +253,7 @@ fn literal_number() {
 #[test]
 fn literal_string() {
     let p = parse(r#""hello world";"#);
-    assert_eq!(as_string_lit(entry(&p)), "\"hello world\"");
+    assert_eq!(as_string_lit(entry(&p)), "hello world");
 }
 
 #[test]
@@ -490,12 +490,12 @@ fn if_elif_else() {
     "#,
     );
     let (_, then, elifs, else_) = as_if(entry(&p));
-    assert_eq!(as_string_lit(then), "\"positive\"");
+    assert_eq!(as_string_lit(then), "positive");
     assert_eq!(elifs.len(), 1);
     let (elif_op, _, _) = as_binary(&elifs[0].condition);
     assert_eq!(*elif_op, BinaryOp::Less);
-    assert_eq!(as_string_lit(&elifs[0].body), "\"negative\"");
-    assert_eq!(as_string_lit(else_), "\"zero\"");
+    assert_eq!(as_string_lit(&elifs[0].body), "negative");
+    assert_eq!(as_string_lit(else_), "zero");
 }
 
 #[test]
