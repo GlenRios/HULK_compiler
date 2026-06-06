@@ -2,6 +2,8 @@
 linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
 rustflags = [
   "-C", "link-arg=-Wl,--whole-archive,C:/llvm17-wrap/libllvm17stubs.a,--no-whole-archive",
+  "-C", "link-arg=-lmsvcrt",
+  "-C", "link-arg=-lmingwex",
 ]
 
 [env]
