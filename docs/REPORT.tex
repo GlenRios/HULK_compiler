@@ -1,0 +1,2740 @@
+% ════════════════════════════════════════════════════════════════════════════
+%  Reporte de Proyecto Final --- Compilador HULK
+%  Asignatura: Compilación / Lenguajes de Programación
+%  Facultad de Matemática y Computación, Universidad de La Habana
+%
+%  Estilo: inspirado en Classic Thesis (A. Miede) + Bringhurst, adaptado.
+%  Compilar con: pdflatex REPORT.tex (dos pasadas para referencias)
+% ════════════════════════════════════════════════════════════════════════════
+
+\documentclass[11pt,a4paper,oneside,openany]{report}
+
+% ── Codificación e idioma ───────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla,es-noindentfirst,es-noshorthands]{babel}
+\usepackage{csquotes}
+
+% ── Tipografía profesional ──────────────────────────────────────────────────
+% mathpazo provee Palatino para texto y matemáticas: alta legibilidad,
+% favorita en literatura clásica de informática (Knuth, Bringhurst).
+\usepackage{mathpazo}
+\linespread{1.08}
+\usepackage{textcomp}
+\usepackage{gensymb}
+
+% ── Geometria de página ─────────────────────────────────────────────────────
+\usepackage[
+  top=2.8cm, bottom=2.8cm,
+  inner=3.2cm, outer=2.4cm,
+  headheight=15pt,
+  headsep=18pt,
+  footskip=24pt,
+  marginparwidth=2cm
+]{geometry}
+
+% ── Color: paleta sobria y profesional ──────────────────────────────────────
+\usepackage{xcolor}
+\definecolor{halfgray}{gray}{0.55}
+\definecolor{webgreen}{rgb}{0,.5,0}
+\definecolor{webbrown}{rgb}{.6,0,0}
+\definecolor{hulkblue}{HTML}{1F3A68}
+\definecolor{hulkaccent}{HTML}{8B0000}
+\definecolor{codebg}{HTML}{F8F8F8}
+\definecolor{codeborder}{HTML}{CCCCCC}
+\definecolor{codecomment}{HTML}{708090}
+\definecolor{codekeyword}{HTML}{0033A0}
+\definecolor{codestring}{HTML}{007F00}
+\definecolor{codetype}{HTML}{6B3FA0}
+
+% ── Encabezados de sección ──────────────────────────────────────────────────
+\usepackage{titlesec}
+\usepackage{titletoc}
+
+% Capitulos al estilo Bringhurst: número grande gris, titulo en versalitas
+% Estilo Bringhurst con itálica negrita (preserva tildes en Palatino)
+\titleformat{\chapter}[display]
+  {\bfseries\Large}
+  {\filright\fontsize{60}{60}\selectfont\color{halfgray}\thechapter}
+  {0pt}
+  {\filright\fontsize{22}{24}\selectfont\itshape\bfseries\color{hulkblue}}
+\titlespacing*{\chapter}{0pt}{-30pt}{40pt}
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries}
+  {\color{halfgray}\thesection\hspace{0.5em}}
+  {0pt}{}
+
+\titleformat{\subsection}
+  {\normalfont\large\itshape\bfseries}
+  {\thesubsection\hspace{0.5em}}
+  {0pt}{}
+
+% ── Encabezados y pie de página ─────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[LE]{\small\color{halfgray}\thepage\quad\textit{\nouppercase{\leftmark}}}
+\fancyhead[RO]{\small\color{halfgray}\textit{\nouppercase{\rightmark}}\quad\thepage}
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ #1}{}}
+
+\fancypagestyle{plain}{%
+  \fancyhf{}\renewcommand{\headrulewidth}{0pt}
+  \fancyfoot[C]{\small\color{halfgray}\thepage}
+}
+
+% ── Indice: estilo clásico al modo Knuth/Bringhurst ───────────────────────
+\usepackage{tocloft}
+% Capítulos: versalitas, sin puntos guía, numeración alineada
+\renewcommand{\cftchapfont}{\normalfont\bfseries}
+\renewcommand{\cftchappagefont}{\normalfont\bfseries}
+\renewcommand{\cftchapleader}{\hfill}
+\renewcommand{\cftchapaftersnum}{\quad}
+\renewcommand{\cftchapaftersnumb}{}
+\setlength{\cftchapnumwidth}{2.2em}
+\setlength{\cftbeforechapskip}{0.8em}
+% Secciones: cuerpo normal, con puntos guía discretos
+\renewcommand{\cftsecfont}{\normalfont}
+\renewcommand{\cftsecpagefont}{\normalfont}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftdotsep}{4.5}
+\setlength{\cftsecindent}{2.2em}
+\setlength{\cftsecnumwidth}{2.6em}
+% Subsecciones
+\renewcommand{\cftsubsecfont}{\normalfont\itshape}
+\renewcommand{\cftsubsecpagefont}{\normalfont}
+\renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
+\setlength{\cftsubsecindent}{4.5em}
+\setlength{\cftsubsecnumwidth}{3em}
+% Título "Índice general"
+\renewcommand{\contentsname}{Índice general}
+
+% ── Hiperlinks ──────────────────────────────────────────────────────────────
+\usepackage[
+  pdfusetitle,
+  pdfencoding=auto,
+  hidelinks,
+  colorlinks=false,
+  linktoc=all,
+  bookmarksopen=true,
+  bookmarksdepth=2
+]{hyperref}
+
+% ── Cajas, listas, tablas ───────────────────────────────────────────────────
+\usepackage{enumitem}
+\setlist{topsep=2pt,itemsep=2pt,parsep=0pt}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{array}
+\usepackage{float}
+\usepackage{caption}
+\captionsetup{font=small,labelfont={bf,sc},labelsep=period}
+\usepackage{subcaption}
+
+% ── Cajas estilizadas ───────────────────────────────────────────────────────
+\usepackage[most]{tcolorbox}
+\tcbset{
+  defstyle/.style={
+    enhanced, breakable,
+    colback=hulkblue!4, colframe=hulkblue!50!black,
+    coltitle=white, fonttitle=\bfseries\scshape,
+    boxrule=0.5pt, arc=2pt,
+    left=10pt, right=10pt, top=6pt, bottom=6pt,
+    title filled, attach boxed title to top left={xshift=10pt,yshift=-7pt},
+    boxed title style={colback=hulkblue!80!black, sharp corners, boxrule=0pt}
+  },
+  notebox/.style={
+    enhanced, breakable,
+    colback=halfgray!8, colframe=halfgray!60,
+    boxrule=0.5pt, arc=1pt,
+    left=10pt, right=10pt, top=4pt, bottom=4pt
+  }
+}
+
+\newtcolorbox{definition}[1][]{defstyle, title={Definición}, #1}
+\newtcolorbox{designnote}[1][]{notebox, title={\textsc{Nota de diseño}}, #1, attach boxed title to top left={xshift=8pt,yshift=-6pt}, coltitle=halfgray!80!black, boxed title style={colback=halfgray!10, sharp corners, boxrule=0pt}}
+
+% ── Código: estilos para HULK, Rust, LLVM IR ────────────────────────────────
+\usepackage{listings}
+
+\lstdefinestyle{base}{
+  inputencoding=utf8,
+  extendedchars=true,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
+    {¿}{{?`}}1 {¡}{{!`}}1,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekeyword}\bfseries,
+  stringstyle=\color{codestring},
+  commentstyle=\color{codecomment}\itshape,
+  numberstyle=\tiny\color{halfgray},
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{codeborder},
+  numbers=left, numbersep=10pt,
+  breaklines=true, breakatwhitespace=true,
+  showstringspaces=false,
+  captionpos=b, abovecaptionskip=8pt,
+  belowcaptionskip=2pt,
+  tabsize=2,
+  xleftmargin=6pt, xrightmargin=2pt,
+  framexleftmargin=4pt
+}
+
+\lstdefinelanguage{hulk}{
+  morekeywords={let,in,if,elif,else,while,for,function,type,new,self,inherits,
+    protocol,extends,is,as,true,false,null,base},
+  morekeywords=[2]{Number,Boolean,String,Object,Null,Vector,Range,Iterable,Enumerable},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]"
+}
+\lstdefinestyle{hulkst}{style=base,language=hulk,
+  keywordstyle=[2]\color{codetype}\itshape}
+
+\lstdefinelanguage{rustlang}{
+  morekeywords={fn,let,mut,pub,struct,enum,impl,match,Ok,Err,Some,None,
+    use,mod,crate,super,self,return,if,else,while,for,in,loop,trait,
+    where,as,unsafe,extern,static,const,ref,move},
+  morekeywords=[2]{Self,String,Vec,Box,Option,Result,bool,u32,u64,i32,
+    i64,f32,f64,char,usize,isize},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]"
+}
+\lstdefinestyle{rustst}{style=base,language=rustlang,
+  keywordstyle=[2]\color{codetype}}
+
+\lstdefinelanguage{llvm}{
+  morekeywords={define,declare,alloca,store,load,call,ret,br,add,sub,mul,
+    fdiv,fadd,fmul,fsub,fptoui,fptosi,uitofp,getelementptr,icmp,fcmp,phi,
+    unreachable,select,and,or,xor,zext,sext,trunc,bitcast,inttoptr,ptrtoint,
+    global,constant,type,private,internal,external,linkonce,common},
+  morekeywords=[2]{i1,i8,i16,i32,i64,double,float,ptr,void,label},
+  sensitive=true,
+  morecomment=[l]{;},
+  morestring=[b]"
+}
+\lstdefinestyle{llvmst}{style=base,language=llvm,
+  keywordstyle=[2]\color{codetype}}
+
+\lstdefinestyle{bnf}{style=base,
+  keywordstyle=\color{codekeyword},
+  morekeywords={},
+  numbers=none}
+
+% Etiqueta "Listado X.Y" en lugar de "Listing"
+\renewcommand{\lstlistingname}{Listado}
+\renewcommand{\lstlistlistingname}{Indice de listados}
+
+% ── Diagramas ───────────────────────────────────────────────────────────────
+\usepackage{tikz}
+\usetikzlibrary{
+  arrows.meta, automata, positioning, shapes.geometric,
+  shapes.misc, calc, fit, backgrounds, decorations.pathreplacing,
+  matrix, trees, chains, shapes.multipart, shadows
+}
+
+% ── Referencias cruzadas inteligentes ───────────────────────────────────────
+\usepackage[spanish,capitalise,nameinlink]{cleveref}
+
+% ── Letras capitulares y citaciones ─────────────────────────────────────────
+\usepackage{lettrine}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+% ── Comandos personalizados ─────────────────────────────────────────────────
+\newcommand{\hulk}{\textsc{Hulk}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+% ── Mejor justificación: microtype + tolerancia ─────────────────────────────
+\usepackage[activate={true,nocompatibility},final,tracking=true,kerning=true,spacing=true,factor=1100,stretch=10,shrink=10]{microtype}
+\setlength{\emergencystretch}{3em}
+\tolerance=1500
+\hbadness=2000
+\newcommand{\rust}{\textsc{Rust}}
+\newcommand{\llvm}{\textsc{Llvm}}
+\newcommand{\inkwell}{\textit{inkwell}}
+\newcommand{\todochk}{\textsuperscript{\color{webgreen}\ding{52}}}
+\usepackage{pifont}
+\newcommand{\done}{{\color{webgreen}\ding{52}}}
+\newcommand{\miss}{{\color{webbrown}\ding{56}}}
+\newcommand{\halfdone}{{\color{orange}\ding{109}}}
+
+% ── Sin sangria de parrafo, separación vertical en su lugar ──────────────────
+\usepackage{parskip}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+
+% ════════════════════════════════════════════════════════════════════════════
+\begin{document}
+% ════════════════════════════════════════════════════════════════════════════
+
+% ────────────────────────────────────────────────────────────────────────────
+%  Portada
+% ────────────────────────────────────────────────────────────────────────────
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1cm}
+
+{\scshape\large Universidad de La Habana\\[0.3em]
+Facultad de Matemática y Computación\par}
+
+\vspace{0.5cm}
+{\color{halfgray}\rule{0.7\textwidth}{0.4pt}}
+\vspace{2.5cm}
+
+{\fontsize{36}{40}\selectfont\itshape Un compilador para \par}
+\vspace{0.6cm}
+{\fontsize{72}{72}\selectfont\bfseries\color{hulkblue} HULK \par}
+\vspace{1.0cm}
+{\Large\itshape Diseño, implementación y extensión de un \\[0.2em]
+lenguaje de programación orientado a objetos\par}
+
+\vspace{2.5cm}
+
+{\color{halfgray}\rule{0.4\textwidth}{0.4pt}}
+\vspace{0.8cm}
+
+{\Large
+\textsc{Reporte de Proyecto Final}\\[0.5em]
+\textit{Asignaturas de Compilación y Lenguajes de Programación}\par}
+
+\vspace{1.5cm}
+
+\begin{tabular}{rl}
+\textsc{Curso}      & 2025--2026 \\[2pt]
+\textsc{Carrera}    & Ciencias de la Computación \\[2pt]
+\textsc{Año}        & Tercer año \\[2pt]
+\textsc{Backend}    & \llvm{} 17 (código nativo x86-64) \\[2pt]
+\textsc{Stack}      & \rust{} 1.77+ \\[2pt]
+\textsc{Extensión}  & Vectores y expresiones generadoras \\
+\end{tabular}
+
+\vfill
+{\color{halfgray}\rule{0.7\textwidth}{0.4pt}}
+\vspace{0.5em}
+{\large \today \par}
+\end{titlepage}
+
+% ────────────────────────────────────────────────────────────────────────────
+%  Resumen
+% ────────────────────────────────────────────────────────────────────────────
+\thispagestyle{plain}
+\chapter*{Resumen}
+\addcontentsline{toc}{chapter}{Resumen}
+\markboth{Resumen}{Resumen}
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{S}{e} presenta un compilador \textit{ahead
+of time} para \hulk{} (\textit{Havana University Language for Kompilers}), un
+lenguaje multiparadigma estáticamente tipado, orientado a expresiones y con un
+sistema de objetos basado en herencia simple y protocolos estructurales. El
+compilador está escrito íntegramente en \rust{} (edición~2024) y produce
+ejecutables nativos x86-64 mediante \llvm{}~17, accedido a través de la biblioteca
+\inkwell{}. El \textit{frontend} (analizadores léxico, sintáctico y semántico) y
+el \textit{backend} (generación de \llvm{}~IR, optimización y enlace con un
+\textit{runtime} en~C) se implementan sin recurrir a generadores externos de
+\textit{lexers} ni \textit{parsers}: el analizador léxico se construye sobre
+autómatas finitos no deterministas obtenidos por la construcción clásica de
+Thompson, y el analizador sintáctico es un motor LALR(1) cuyas tablas se generan
+en tiempo de inicialización a partir de una definición declarativa de la gramática
+de \hulk{}.
+
+La implementación cubre todas las características nucleares del lenguaje
+---expresiones aritméticas y de cadena, control de flujo expresivo, funciones de
+primer orden, tipos con herencia simple, protocolos con conformidad estructural y
+los operadores de prueba y conversión de tipos \code{is}/\code{as}---, e incorpora
+como aporte propio un \textbf{sistema de vectores con expresiones generadoras}.
+Esta extensión añade un constructor de tipos paramétrico $\code{Vector<T>}$ al
+sistema de tipos, tres nuevas formas sintácticas (literales, generadores e
+indexación) y una semántica operacional ansiosa con verificación de límites en
+tiempo de ejecución. Su diseño está inscrito en la familia clásica de las
+\textit{list comprehensions} de Haskell~\cite{peytonjones2003} y Python, las
+\textit{for-comprehensions} de Scala~\cite{odersky2008} y los \textit{ranges and
+views} de C++20, y se compara con cada una de ellas para justificar las
+decisiones de diseño tomadas.
+
+El cuerpo del documento analiza con detalle las cinco fases del compilador,
+expone las decisiones técnicas relevantes junto a sus alternativas descartadas,
+formaliza la sintaxis y la semántica del lenguaje implementado mediante reglas
+de inferencia tipográfica y semántica operacional de gran paso, y reporta los
+resultados de validación obtenidos al ejecutar la suite de pruebas sobre el
+binario producido.
+
+% ────────────────────────────────────────────────────────────────────────────
+%  Indice general
+% ────────────────────────────────────────────────────────────────────────────
+\tableofcontents
+
+\cleardoublepage
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Introducción}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{L}{a} traducción de programas escritos en
+un lenguaje de alto nivel a código nativo ejecutable es uno de los procesos
+fundamentales de la informática contemporánea y la actividad sobre la que se
+sostienen prácticamente todas las herramientas modernas de desarrollo de
+\textit{software}. Tras cinco décadas de evolución la disciplina ha consolidado un
+\textit{pipeline} de fases bien diferenciadas ---análisis léxico, sintáctico y
+semántico, generación de código intermedio, optimización y emisión de código
+máquina--- cuyos fundamentos teóricos están extensamente documentados en la
+literatura clásica~\cite{aho2006,cooper2011,appel1998}, pero cuya implementación
+concreta para un lenguaje real exige resolver una gran cantidad de problemas
+prácticos no triviales: representación de tipos algebraicos en memoria, despacho
+de métodos en presencia de polimorfismo, propagación de tipos inferidos a través
+de fases independientes, integración con \textit{backends} maduros como
+\llvm{}~\cite{lattner2004}, manejo de errores con localización precisa, y un largo
+etcétera.
+
+Este reporte describe \textbf{el diseño y la construcción de un compilador
+completo} para \hulk{} (\textit{Havana University Language for Kompilers}), un
+lenguaje multiparadigma de propósito didáctico cuya especificación combina
+elementos del paradigma funcional, imperativo y orientado a objetos. El compilador toma como entrada un fichero fuente \texttt{.hulk} y
+produce un ejecutable nativo Linux x86-64 que el sistema operativo puede cargar y
+ejecutar sin más dependencias externas que \code{libc} y \code{libm}. Toda la
+implementación está escrita en \rust{} salvo una pequeña biblioteca de soporte en
+tiempo de ejecución escrita en~C, y utiliza \llvm{}~17 como infraestructura para
+la optimización y la emisión de código máquina.
+
+\section{El lenguaje \hulk{}}
+
+\hulk{} es un lenguaje estáticamente tipado, orientado a expresiones, con un
+sistema de objetos basado en herencia simple y protocolos estructurales. Tres
+rasgos lo definen como objetivo de compilación particularmente interesante.
+
+\paragraph{Expresividad funcional.}
+En \hulk{} no existe la noción de \textit{sentencia}: todas las construcciones
+del lenguaje son expresiones que producen un valor. Un \code{if-elif-else} no
+ejecuta ramas distintas con efecto de lado; \emph{retorna} el valor de la rama
+elegida. Un bucle \code{while} retorna el valor de su última iteración. Un bloque
+$\{\,e_1;\, e_2;\, \dots;\, e_n\,\}$ retorna $e_n$. Esta uniformidad obliga al
+verificador de tipos a calcular el tipo de cada construcción compuesta como el
+\emph{ancestro común más cercano} de los tipos de sus subexpresiones, y obliga al
+generador de código a sintetizar nodos $\phi$ en cada punto de unión del grafo de
+flujo.
+
+\paragraph{Tipado nominal con protocolos estructurales.}
+La jerarquía de tipos definidos por el usuario sigue el modelo nominal clásico
+(dos tipos son iguales si tienen el mismo nombre), con herencia simple y
+sobrescritura de métodos. Sobre esa jerarquía se superpone un segundo mecanismo
+de polimorfismo basado en \textit{protocolos}: tipos abstractos que declaran
+firmas de métodos sin cuerpo y que un tipo concreto \emph{satisface
+implícitamente} con sólo declarar métodos compatibles ---sin necesidad de
+mención explícita de la relación---. La conformidad estructural se rige por las
+reglas estándar de varianza (covarianza en retornos, contravarianza en
+parámetros)~\cite{pierce2002}, lo que la convierte en una construcción rica desde
+el punto de vista del sistema de tipos.
+
+\paragraph{Inferencia local de tipos.}
+Las anotaciones de tipo son opcionales en parámetros, atributos e
+inicializadores de \code{let}. Cuando se omiten, el verificador de tipos debe
+inferir el tipo correcto mediante un análisis bidireccional: las firmas conocidas
+restringen los tipos hacia abajo, los usos restringen los tipos hacia arriba.
+La inferencia debe operar también en presencia de \emph{recursión mutua} entre
+funciones y entre tipos, lo que obliga a separar la recolección de declaraciones
+de la verificación de los cuerpos.
+
+\section{Principios de diseño del compilador}
+
+El compilador descrito aquí está construido en torno a cinco principios de diseño
+explícitos, todos ellos consecuencia de un mismo compromiso de fondo: priorizar
+la transparencia de la maquinaria interna sobre la conveniencia inmediata. Las
+herramientas modernas de generación de \textit{frontends} (LALRPOP, ANTLR,
+Bison) y de \textit{backends} (Cranelift, GCC plugins) permiten obtener un
+compilador funcional en muy pocas líneas, pero a costa de ocultar precisamente
+los algoritmos que el documento se propone analizar.
+
+\begin{description}[style=nextline,leftmargin=2.2em]
+  \item[D1. Transparencia algorítmica.]
+    Cada fase implementa de forma explícita los algoritmos canónicos asociados
+    a ella: construcción de Thompson en el \textit{lexer}, cálculo de FIRST y
+    FOLLOW por punto fijo y construcción canónica de LR(1) con fusión LALR(1)
+    en el \textit{parser}, propagación bidireccional de tipos con dos pasadas
+    en el analizador semántico, \textit{lowering} estructurado a SSA en el
+    generador de código. Ninguna fase delega su núcleo algorítmico en una
+    biblioteca externa.
+  \item[D2. Compilación a código nativo, no interpretación.]
+    El compilador es un traductor estricto: produce un binario ELF~x86-64
+    enlazable, no un interpretador del AST ni una máquina virtual ad-hoc. La
+    intención es validar la implementación contra la métrica más exigente
+    posible ---tiempos de ejecución comparables con el código~C equivalente---,
+    no contra una semántica abstracta.
+  \item[D3. Seguridad de memoria del compilador mismo.]
+    El compilador maneja estructuras de datos complejas con múltiples
+    referencias cruzadas (tablas de símbolos jerárquicas, grafos de tipos,
+    tablas LALR con cientos de estados). Se utilizó \rust{} como lenguaje
+    anfitrión para eliminar de raíz una clase entera de errores que
+    históricamente han plagado los compiladores escritos en C++:
+    \textit{dangling pointers}, \textit{double frees}, lecturas de memoria
+    invalida. El \textit{wrapper} \inkwell{}~\cite{inkwell} aporta la misma
+    garantía sobre el uso de la API~C de \llvm{}.
+  \item[D4. Reproducibilidad y \textit{debuggability}.]
+    Toda estructura de datos significativa ---la gramática, la tabla LALR, el
+    autómata, la jerarquía de tipos, el \llvm{}~IR generado--- es inspeccionable
+    en tiempo de ejecución mediante volcados textuales legibles. La gramática
+    se describe como una estructura de datos en memoria en lugar de un
+    \textit{DSL} externo, lo que permite imprimir cada producción con su
+    identificador y depurar conflictos sin recompilar.
+  \item[D5. Extensibilidad sintáctica y semántica.]
+    El sistema de tipos, el AST y el generador de código fueron diseñados con
+    anticipación a la introducción de extensiones. La extensión central
+    documentada en este reporte ---vectores con expresiones generadoras---
+    añade tres formas sintácticas y un nuevo constructor de tipos
+    paramétrico, y demuestra empíricamente que la organización modular es
+    capaz de absorber esa adición sin reescrituras significativas.
+\end{description}
+
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Arquitectura del compilador}
+\label{cap:arq}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{l} compilador adopta la organización
+en fases secuenciales que es habitual en la disciplina desde los primeros
+compiladores prácticos~\cite{wirth1971,aho2006}: el programa fuente atraviesa
+una sucesión de módulos, cada uno de los cuales lo transforma en una
+representación interna distinta hasta llegar al binario ejecutable. Este
+capítulo describe la arquitectura concreta del compilador implementado;
+los capítulos sucesivos entran en el detalle de cada fase.
+
+\section{El pipeline de compilación}
+
+La compilación es siempre una traducción \textit{ahead of time}: el binario
+\code{hulk} recibe como argumento la ruta de un fichero \texttt{.hulk}, lo
+procesa por completo, escribe un fichero objeto en un directorio temporal
+y lo enlaza con la biblioteca de \textit{runtime} mediante \code{gcc}, dejando
+en el directorio actual un ejecutable llamado \code{output}. El proceso es
+estrictamente secuencial: cada fase se ejecuta una sola vez, en orden, y
+sus errores se reportan según el código de salida fijado por el contrato de
+interfaz (1 para errores léxicos, 2 para sintácticos, 3 para semánticos).
+
+La \cref{fig:pipeline} representa el pipeline tal como está implementado en
+\code{src/main.rs}. Las cajas verticales en línea continua corresponden a las
+fases que el compilador ejecuta en su orden de invocación; las cajas
+laterales en línea punteada representan las estructuras de datos que cada
+fase produce y la fase siguiente consume.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  every node/.style={font=\small},
+  phase/.style = {
+    rectangle, draw=hulkblue!80!black, line width=0.8pt,
+    top color=hulkblue!2, bottom color=hulkblue!18,
+    rounded corners=3pt,
+    minimum width=4.2cm, minimum height=1.0cm, align=center,
+    drop shadow={shadow xshift=0.6pt, shadow yshift=-0.6pt, opacity=0.25}
+  },
+  back/.style = {
+    rectangle, draw=hulkaccent!80!black, line width=0.8pt,
+    top color=hulkaccent!2, bottom color=hulkaccent!18,
+    rounded corners=3pt,
+    minimum width=4.2cm, minimum height=1.0cm, align=center,
+    drop shadow={shadow xshift=0.6pt, shadow yshift=-0.6pt, opacity=0.25}
+  },
+  io/.style = {
+    rectangle, draw=halfgray, line width=0.5pt, dashed,
+    fill=white,
+    minimum width=4.2cm, minimum height=0.7cm, align=center,
+    font=\footnotesize\itshape
+  },
+  ir/.style = {
+    rectangle, draw=halfgray, line width=0.4pt, dashed,
+    fill=halfgray!4,
+    minimum width=3.4cm, minimum height=0.6cm, align=center,
+    font=\footnotesize\itshape
+  },
+  arr/.style  = {-{Stealth[length=2.6mm,width=2.2mm]}, line width=0.55pt, color=halfgray!60!black},
+  sidearr/.style = {{Stealth[length=2.6mm,width=2.2mm]}-, line width=0.4pt, dashed, color=halfgray!60!black}
+]
+  % main column
+  \node[io]    (src)               {\texttt{programa.hulk}};
+  \node[phase] (lex)  [below=8mm of src]  {Análisis léxico\\\footnotesize\code{lexer::Lexer}};
+  \node[phase] (par)  [below=8mm of lex]  {Análisis sintáctico\\\footnotesize\code{parser::ParserDriver}};
+  \node[phase] (sem)  [below=8mm of par]  {Análisis semántico\\\footnotesize\code{semantic::TypeChecker}};
+  \node[back]  (cg)   [below=8mm of sem]  {Generación de código\\\footnotesize\code{codegen::CodegenContext}};
+  \node[back]  (opt)  [below=8mm of cg]   {Optimización \llvm{}\\\footnotesize\code{mem2reg, instcombine, \dots}};
+  \node[back]  (emit) [below=8mm of opt]  {Emisión de código objeto\\\footnotesize\code{TargetMachine::write\_to\_file}};
+  \node[back]  (link) [below=8mm of emit] {Enlace con \textit{runtime}\\\footnotesize\code{gcc} \texttt{+} \code{hulk\_runtime.a}};
+  \node[io]    (bin)  [below=8mm of link] {\texttt{./output} (ELF x86-64)};
+
+  % main arrows
+  \foreach \a/\b in {src/lex, lex/par, par/sem, sem/cg, cg/opt, opt/emit, emit/link, link/bin}
+      \draw[arr] (\a) -- (\b);
+
+  % lateral IR labels (right side)
+  \node[ir] (toks)  [right=12mm of lex.east] {flujo de tokens};
+  \node[ir] (ast1)  [right=12mm of par.east] {AST};
+  \node[ir] (ast2)  [right=12mm of sem.east, align=center] {AST \texttt{+}\\tipos inferidos};
+  \node[ir] (ir1)   [right=12mm of cg.east]  {módulo \llvm{}~IR};
+  \node[ir] (ir2)   [right=12mm of opt.east] {IR optimizado};
+  \node[ir] (obj)   [right=12mm of emit.east]{archivo \texttt{.o}};
+
+  \foreach \p/\d in {lex/toks, par/ast1, sem/ast2, cg/ir1, opt/ir2, emit/obj}
+      \draw[sidearr] (\d.west) -- (\p.east);
+
+  % brace: frontend / backend zone markers (left side)
+  \draw[decorate, decoration={brace, amplitude=6pt}, color=hulkblue!70!black, line width=0.6pt]
+      ([xshift=-6mm]lex.north west) -- ([xshift=-6mm]sem.south west)
+      node[midway, left=8pt, font=\footnotesize\scshape, color=hulkblue!70!black, rotate=90, anchor=south]
+      {Frontend};
+  \draw[decorate, decoration={brace, amplitude=6pt}, color=hulkaccent!70!black, line width=0.6pt]
+      ([xshift=-6mm]cg.north west) -- ([xshift=-6mm]link.south west)
+      node[midway, left=8pt, font=\footnotesize\scshape, color=hulkaccent!70!black, rotate=90, anchor=south]
+      {Backend};
+\end{tikzpicture}
+\caption[Pipeline de compilación]{Pipeline de compilación implementado en
+  \code{src/main.rs}. La columna central contiene las fases ejecutadas en
+  orden; cada caja indica el módulo de Rust que realiza la transformación.
+  Los recuadros laterales en línea punteada son las estructuras de datos que
+  cada fase produce y la fase siguiente consume. Las llaves a la izquierda
+  agrupan visualmente el \textit{frontend} (azul) y el \textit{backend}
+  (rojo); la frontera entre ambos coincide con la producción del módulo de
+  \llvm{}~IR.}
+\label{fig:pipeline}
+\end{figure}
+
+\section{Las cuatro fases del \textit{frontend}}
+
+El \textit{frontend} comprende las tres primeras fases del compilador y se
+encarga de transformar el texto fuente en un AST anotado con tipos. La
+implementación reparte esta responsabilidad entre tres módulos de Rust con
+fronteras estrictas: \code{lexer}, \code{parser} y \code{semantic}. La
+\cref{fig:pipeline} muestra cada uno alimentando al siguiente sin
+retroalimentación.
+
+\paragraph{Lexer.} El módulo \code{lexer} reconoce tokens a partir del flujo
+de caracteres del fichero fuente. Su núcleo es un autómata finito no
+determinista construido por el algoritmo de Thompson a partir de las
+expresiones regulares declaradas para cada categoría léxica. Los autómatas
+de todos los patrones se combinan en un \emph{MasterNFA}, del que el lexer
+toma decisiones por la regla del máximo prefijo con desempate por prioridad.
+El resultado es un vector de tokens entregado por completo al
+\textit{parser}; los tokens que encubren errores léxicos se marcan como
+\code{ERROR} sin interrumpir el reconocimiento, lo que permite reportar
+varios errores léxicos en una misma compilación.
+
+\paragraph{Parser.} El módulo \code{parser} consume la secuencia de tokens y
+construye el árbol sintáctico abstracto. Internamente se subdivide en cuatro
+submódulos: \code{grammar} define la gramática como una colección de
+producciones declarativas, \code{lalr} construye las tablas LALR(1) de
+\textsc{Action} y \textsc{Goto} en tiempo de inicialización a partir de esa
+gramática, \code{engine} ejecuta el algoritmo \textit{shift-reduce} sobre las
+tablas precalculadas, y \code{ast} define la jerarquía de nodos del árbol
+sintáctico abstracto. La construcción de las tablas ---algoritmo canónico de
+DeRemer~\cite{deremer1969}--- ocurre una sola vez al iniciarse el
+compilador.
+
+\paragraph{Semantic.} El módulo \code{semantic} verifica el AST y lo enriquece
+con información de tipos. Se compone de un submódulo de \emph{sistema de
+tipos} ---definiciones del enum \code{HulkType} y de la estructura
+\code{TypeHierarchy}---, una tabla de símbolos jerárquica con
+\textit{scoping} estructurado, y un \emph{type checker} que recorre el AST
+en dos pasadas: la primera registra las declaraciones de tipos, protocolos
+y funciones; la segunda visita los cuerpos, infiere los tipos ausentes y
+escribe los resultados en un mapa indexado por el identificador único de
+cada expresión. Al concluir, el análisis retorna una estructura con tres
+componentes: la jerarquía de tipos resuelta, las firmas de las funciones, y
+los tipos inferidos por expresión.
+
+\section{Las fases del \textit{backend}}
+
+El \textit{backend} ---módulo \code{codegen}--- traduce el AST tipado a un
+módulo de \llvm{}~IR. La generación se orquesta en \code{codegen::jit}, que
+contiene los dos puntos de entrada del módulo:
+\code{execute\_program\_jit} para ejecución \textit{just-in-time} usada en
+los tests, y \code{compile\_to\_binary} para la compilación AOT que produce
+el binario final. Ambas comparten el mismo flujo interno.
+
+\paragraph{Lowering.} La estructura \code{CodegenContext} encapsula el estado
+de la generación: el contexto, el módulo y el constructor de \llvm{}, una
+pila de tablas de símbolos con \textit{scoping} léxico, el registro de
+\textit{layouts} de structs y \textit{vtables} por tipo, y los mapas de
+tipos heredados del analizador semántico. La operación \code{visit\_program}
+construye el módulo \llvm{} en tres pasos sucesivos: declaración de las
+funciones externas del \textit{runtime}, predeclaración de todas las
+funciones del programa (lo que habilita la recursión mutua sin reordenar el
+AST), y construcción de los \textit{layouts} de tipos con asignación de
+\textit{type tags} en orden DFS pre-orden. Sobre ese cimiento se compila el
+cuerpo de cada declaración (\code{lower\_decl}) y, finalmente, la expresión
+de entrada del programa (\code{lower\_expr}), envuelta en una función
+\code{\_\_hulk\_entry()} accesible desde la convención de llamada de~C.
+
+\paragraph{Optimización.} El módulo \llvm{} producido se somete a un
+\textit{pipeline} fijo de transformaciones aplicadas con el \textit{new pass
+manager} de \llvm{}~17, declarado en \code{codegen::jit} como la cadena
+\code{"mem2reg, instcombine, reassociate, simplifycfg"}. \code{mem2reg}
+es el habilitador fundamental: promueve los patrones \code{alloca/store/load}
+emitidos por el \textit{lowering} a registros virtuales SSA, lo que abre la
+puerta a las simplificaciones algebraicas y de control de flujo aplicadas
+por los \textit{passes} subsiguientes.
+
+\paragraph{Emisión de código objeto.} Tras la optimización, el módulo se
+escribe en un fichero objeto temporal mediante
+\code{TargetMachine::write\_to\_file}, configurado para la \textit{triple}
+\textit{nativa} de la máquina sobre la que se ejecuta el compilador (en la
+práctica, \code{x86\_64-unknown-linux-gnu}).
+
+\paragraph{Enlace.} El compilador invoca finalmente \code{gcc} con tres
+argumentos: el fichero objeto recién emitido, el archivo \code{hulk\_runtime.a}
+con las primitivas de \textit{runtime}, y la bandera \code{-lm} para enlazar
+\code{libm}. El resultado es un binario ELF~x86-64 ubicado en \code{./output}
+que el sistema operativo carga y ejecuta sin más dependencias dinámicas que
+\code{libc} y \code{libm}.
+
+\section{Elección del lenguaje anfitrión: \rust{}}
+
+Tres lenguajes constituyen alternativas razonables para implementar un
+compilador moderno con \textit{backend} basado en \llvm{}: C, C++ y \rust{}.
+La elección recayó sobre \rust{} por cuatro razones técnicas concretas.
+
+\paragraph{Seguridad de memoria sin coste de \textit{garbage collection}.}
+El compilador maneja estructuras de datos complejas con multiples referencias
+cruzadas: tablas de símbolos jerárquicas, grafo de tipos con herencia, tabla de
+parseo LALR con cientos de estados. \rust{} garantiza la ausencia de \textit{dangling
+pointers}, \textit{double frees} y carreras de datos en tiempo de compilación, lo
+que elimina una clase entera de \textit{bugs} históricamente difíciles de depurar
+en compiladores escritos en C++.
+
+\paragraph{Sistema de tipos algebraico.}
+Los enumerados con datos asociados (\code{enum}) y la verificación exhaustiva de
+patrones convierten la representación del AST en una tarea natural y segura. La
+ausencia de un caso en un \code{match} se reporta como error en tiempo de
+compilación, lo que evita bugs por casos faltantes.
+
+\paragraph{Interfaz segura con \llvm{}.}
+La biblioteca \inkwell{}~\cite{inkwell} encapsula la API~C de \llvm{} en abstracciones
+de \rust{} que aprovechan el sistema de tipos para impedir operaciones invalidas
+(p.\,ej. construir una instrucción en un bloque básico ya terminado). Esto
+contrasta con el uso directo de \code{libLLVM} desde C++, donde tales errores
+producen \textit{segfaults} difíciles de diagnosticar.
+
+\paragraph{Ecosistema y herramientas.}
+El gestor de paquetes \code{cargo}, la integración nativa con sistemas de pruebas y
+la disponibilidad de bibliotecas de calidad de producción permiten enfocar el
+esfuerzo en la lógica del compilador en lugar de en infraestructura.
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Análisis léxico}
+\label{cap:lex}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{l} primer paso de cualquier compilador
+consiste en transformar el flujo de caracteres del fichero fuente en una secuencia
+de \textit{tokens} con significado. Esta fase se denomina \textit{análisis léxico} o
+\textit{tokenización}, y en este compilador se ha implementado mediante autómatas
+finitos no deterministas.
+
+\section{Arquitectura: lexer basado en NFA}
+
+\subsection{Construcción de Thompson}
+
+La construcción clásica de Thompson~\cite{thompson1968} permite traducir una expresión
+regular cualquiera en un autómata finito no determinista con dos propiedades clave:
+
+\begin{itemize}
+  \item exactamente un estado inicial y exactamente un estado de aceptación;
+  \item las transiciones epsilon ($\varepsilon$) habilitan la composición modular de
+    subautómatas sin alterar el alfabeto reconocido.
+\end{itemize}
+
+La construcción procede inductivamente sobre la estructura de la expresión regular,
+generando fragmentos NFA que se combinan según los operadores (concatenación,
+alternación, clausura). El tamaño del NFA resultante es lineal en el tamaño de la
+expresión regular original, lo que la hace adecuada para uso práctico.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[shorten >=1pt, node distance=1.6cm, auto,
+  every state/.style={draw=hulkblue, fill=hulkblue!5, minimum size=0.8cm,
+    font=\footnotesize}]
+  \node[state, initial] (q0) {$q_0$};
+  \node[state]          (q1) [right=of q0] {$q_1$};
+  \node[state]          (q2) [right=of q1] {$q_2$};
+  \node[state,accepting] (q3) [right=of q2] {$q_3$};
+  \path[->] (q0) edge node {a} (q1)
+            (q1) edge node {b} (q2)
+            (q2) edge node {c} (q3);
+\end{tikzpicture}
+\caption{Fragmento NFA generado por Thompson para la expresión regular
+  \code{abc}.}
+\label{fig:nfa-abc}
+\end{figure}
+
+\subsection{Ejecución sin determinización}
+
+El enfoque clásico convierte el NFA en un DFA antes de usarlo mediante la
+\textit{construcción de subconjuntos}, lo que produce un autómata mas grande pero mas
+rápido de simular. En este compilador se ha optado por \textbf{ejecutar el NFA
+directamente}, calculando los subconjuntos de estados activos en cada paso. Esta
+decisión se justifica por:
+
+\begin{itemize}
+  \item la simplicidad del código resultante;
+  \item el tamaño modesto de los ficheros fuente \hulk{} (decenas a miles de líneas);
+  \item la ausencia de la fase de determinización, que podria duplicar exponencialmente
+    el número de estados en el peor caso.
+\end{itemize}
+
+\subsection{El MasterNFA y la regla del máximo prefijo}
+
+Para que el \textit{lexer} reconozca todos los tipos de tokens a la vez, los NFA
+individuales de cada patron se combinan en un \textbf{MasterNFA}: un autómata con
+un nuevo estado inicial y transiciones epsilon hacia los estados iniciales de cada
+NFA componente. La \cref{fig:master} ilustra el esquema.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.5cm, auto,
+  state/.style={circle, draw=hulkblue, fill=hulkblue!5,
+    minimum size=0.7cm, font=\scriptsize},
+  acc/.style={state, double, fill=hulkblue!15}]
+  \node[state] (s) {$s$};
+  \node[state] (a1) [above right=0.5cm and 1.5cm of s] {$a_1$};
+  \node[state] (a2) [right=1.5cm of s] {$b_1$};
+  \node[state] (a3) [below right=0.5cm and 1.5cm of s] {$c_1$};
+  \node[acc] (f1) [right=of a1] {$a_n$};
+  \node[acc] (f2) [right=of a2] {$b_n$};
+  \node[acc] (f3) [right=of a3] {$c_n$};
+  \draw[->] (s) edge node[above,sloped] {$\varepsilon$} (a1)
+            (s) edge node[above]        {$\varepsilon$} (a2)
+            (s) edge node[below,sloped] {$\varepsilon$} (a3);
+  \draw[->, dashed] (a1) -- (f1);
+  \draw[->, dashed] (a2) -- (f2);
+  \draw[->, dashed] (a3) -- (f3);
+  \node[font=\scriptsize, right=0.6cm of f1] {keyword \texttt{if}};
+  \node[font=\scriptsize, right=0.6cm of f2] {identificador};
+  \node[font=\scriptsize, right=0.6cm of f3] {número};
+\end{tikzpicture}
+\caption{MasterNFA: estado inicial común con transiciones epsilon a los NFA
+  individuales por patron.}
+\label{fig:master}
+\end{figure}
+
+Cuando varios estados de aceptación son alcanzables simultaneamente, la regla del
+\textit{máximo prefijo} (\textit{maximal munch}) selecciona el patron que reconoce la
+cadena mas larga. En caso de empate (por ejemplo, \code{if} podria interpretarse como
+\textit{keyword} o como identificador), la \textbf{prioridad} numérica asignada a
+cada patron resuelve la ambigüedad: los \textit{keywords} tienen mayor prioridad que
+los identificadores.
+
+\section{Conjunto de tokens reconocidos}
+
+\hulk{} define 43 tipos de token agrupados en cinco categorías. La
+\cref{tab:tokens} resume la clasificación.
+
+\begin{table}[H]
+\centering
+\caption{Conjunto de tokens del lenguaje \hulk{}.}
+\label{tab:tokens}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textsc{Categoria} & \textsc{Tokens} \\
+\midrule
+Palabras reservadas      &
+  \code{let}, \code{in}, \code{if}, \code{elif}, \code{else},
+  \code{while}, \code{for}, \code{function}, \code{type}, \code{new},
+  \code{self}, \code{inherits}, \code{base}, \code{protocol},
+  \code{extends}, \code{is}, \code{as}, \code{true}, \code{false}, \code{null} \\
+Operadores aritméticos   &
+  \code{+}, \code{-}, \code{*}, \code{/}, \code{\%}, \code{\^{}}, \code{**} \\
+Operadores lógicos       &
+  \code{\&}, \code{|}, \code{!} \\
+Operadores de comparación &
+  \code{==}, \code{!=}, \code{<}, \code{>}, \code{<=}, \code{>=} \\
+Operadores especiales    &
+  \code{@}, \code{@@}, \code{:=}, \code{+=}, \code{-=}, \code{*=},
+  \code{/=}, \code{\%=}, \code{=>}, \code{->}, \code{++}, \code{--} \\
+Delimitadores            &
+  \code{(}, \code{)}, \code{\{}, \code{\}}, \code{[}, \code{]},
+  \code{,}, \code{;}, \code{:}, \code{.} \\
+Literales                &
+  números en notación decimal y flotante, cadenas entre comillas dobles,
+  caracteres entre comillas simples, identificadores alfanumericos \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Secuencias de escape: limitación conocida}
+
+Los literales de cadena se reconocen como una secuencia entre comillas dobles que
+admite cualquier carácter, salvo la propia comilla doble sin escapar. El
+\textit{lexer} actual emite el lexema en bruto, comillas incluidas, y la fase
+semántica retira las comillas envolventes para construir el nodo
+\code{Literal::String}. En esta versión del compilador, las secuencias de escape
+\code{\textbackslash n}, \code{\textbackslash t}, \code{\textbackslash"} y
+\code{\textbackslash\textbackslash} no son descodificadas: cualquier
+contrabarra que aparezca en el cuerpo del literal se trasmite tal cual al
+generador de código y, por tanto, al \textit{runtime}. La consecuencia práctica es
+que un \code{print("\textbackslash nhola")} imprime literalmente
+\code{\textbackslash nhola} en lugar de un salto de línea seguido de
+\code{hola}. Esta omisión está documentada como limitación conocida en el
+\cref{cap:lim}; su implementación es directa pero queda fuera del calendario del
+proyecto.
+
+\section{Recuperación de errores}
+
+Cuando el \textit{lexer} encuentra un carácter que no inicia ningun patron válido,
+emite un token especial \code{ERROR} en lugar de detener la compilación. Esto permite
+que el \textit{parser} continúe avanzando y eventualmente reporte multiples errores
+en una misma invocación. El formato del mensaje sigue el contrato oficial de la
+interfaz de evaluación:
+
+\begin{lstlisting}[style=base,numbers=none,caption={Formato estandar de error léxico.}]
+! (línea,columna) LEXICAL: unexpected character 'X'
+\end{lstlisting}
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Análisis sintáctico}
+\label{cap:par}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{U}{na} vez convertido el fuente en un flujo
+de tokens, la fase de análisis sintáctico verifica que dicho flujo se ajuste a la
+gramática del lenguaje y construye una representación estructurada del programa:
+el \textit{arbol sintáctico abstracto} (AST).
+
+\section{Parser LALR(1) implementado desde cero}
+
+A pesar de la disponibilidad de generadores maduros como ANTLR, YACC, Bison o
+LALRPOP en el ecosistema \rust{}, el parser de este compilador está implementado
+manualmente sobre la base del principio de \emph{transparencia algorítmica}
+(D1) enunciado en la introducción. Tres ventajas adicionales se derivan
+de esa decisión:
+
+\begin{itemize}
+  \item \textbf{Inspeccionabilidad}: la gramática se representa como una
+    estructura de datos \rust{} en lugar de procesarse desde un DSL textual
+    externo. Esto permite imprimirla, recorrerla y analizar conflictos
+    \textit{shift}/\textit{reduce} en tiempo de ejecución, sin pasos
+    adicionales de compilación.
+  \item \textbf{Cero dependencias externas}: el \textit{build} del compilador
+    no requiere invocar ni instalar generadores como YACC o Bison. La
+    cadena de \textit{build} se reduce a \code{cargo build}.
+  \item \textbf{Control fino sobre la resolución de conflictos}: cuando la
+    gramática introduce un conflicto deliberado ---como el del separador
+    \code{|} en las expresiones generadoras descritas en el \cref{cap:ext}---,
+    la resolución se programa directamente en el constructor de la tabla, sin
+    necesidad de declarar precedencias en un metalenguaje externo.
+\end{itemize}
+
+\section{Pipeline del parser}
+
+El modulo de análisis sintáctico se compone de cuatro capas claramente delimitadas
+que se describen a continuación.
+
+\subsection{Definición de la gramática}
+
+La gramática de \hulk{} se específica en dos formas equivalentes:
+
+\begin{itemize}
+  \item un fichero \code{src/parser/grammar/hulk.grammar} en notación BNF extendida,
+    legible para humanos y documentado con comentarios;
+  \item una estructura \code{Vec<Production>} en \code{hulk\_grammar.rs} construida
+    programáticamente, que es la versión efectivamente usada por el generador de
+    tablas.
+\end{itemize}
+
+\subsection{Calculo de FIRST y FOLLOW}
+
+Los conjuntos $\textsc{First}(\alpha)$ y $\textsc{Follow}(A)$ se calculan mediante
+el algoritmo clásico de punto fijo. Recordamos las definiciones:
+
+\begin{definition}[title={Definición: conjuntos FIRST y FOLLOW}]
+Sea $G = (N, T, P, S)$ una gramática libre de contexto, $A \in N$ un no-terminal y
+$\alpha \in (N \cup T)^*$ una forma sentencial.
+\begin{align*}
+  \textsc{First}(\alpha) &= \{ a \in T \mid \alpha \Rightarrow^* a\beta \}
+    \cup \{ \varepsilon \mid \alpha \Rightarrow^* \varepsilon \} \\
+  \textsc{Follow}(A) &= \{ a \in T \cup \{\$\} \mid S \Rightarrow^* \alpha A a \beta \}
+\end{align*}
+\end{definition}
+
+El algoritmo de punto fijo itera sobre las producciones actualizando los conjuntos
+hasta que en una iteración completa no cambia ningun conjunto.
+
+\subsection{Construcción de la tabla LALR}
+
+La construcción sigue el algoritmo estándar~\cite{aho2006,cooper2011} y se realiza en
+tres pasos. Primero se construye la colección canónica de \textit{items} LR(1)
+mediante un BFS desde el \textit{item} inicial
+$[\,\textsf{Start} \rightarrow \bullet\,\textsf{Program}\,\$\,,\,\$\,]$ tomando
+clausuras y aplicando $\textsc{Goto}(I, X)$ para cada par estado-símbolo. Para la
+gramática completa de \hulk{} este paso produce del orden de 500--600 estados LR(1).
+Segundo, se aplica el paso característico del algoritmo LALR(1)~\cite{deremer1969}:
+dos estados con idéntico \textit{núcleo} (igual conjunto de pares producción-punto,
+ignorando \textit{lookaheads}) se funden en uno solo, uniendo sus conjuntos de
+\textit{lookaheads}. La fusión reduce el espacio de estados a aproximadamente
+$\mathbf{263}$ estados, una reducción de cerca del $55\%$. Tercero, se rellenan las
+tablas $\textsc{Action}[s,t]$ y $\textsc{Goto}[s,N]$ recorriendo los \textit{items}
+de cada estado fusionado y se registran los conflictos detectados para su
+inspección posterior.
+
+\begin{table}[H]
+\centering
+\caption{Estadísticas del autómata de parseo construido para \hulk{}.}
+\label{tab:lalr-stats}
+\begin{tabularx}{0.75\textwidth}{Xr}
+\toprule
+\textsc{Métrica} & \textsc{Valor} \\
+\midrule
+Producciones declaradas                 &  $\sim 90$   \\
+Estados LR(1) antes de fusión           &  $500$--$600$ \\
+Estados LALR(1) tras fusión por núcleo  &  $\mathbf{263}$ \\
+Entradas no triviales en \textsc{Action} &  ${\sim}1\,500$ \\
+Entradas no triviales en \textsc{Goto}   &  ${\sim}800$  \\
+Conflictos \textit{shift}/\textit{reduce} sin resolver &  $0$ \\
+Conflictos \textit{shift}/\textit{reduce} resueltos    &  $1$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+El único conflicto de la gramática se sitúa sobre el terminal \code{|} y nace de la
+interacción entre el operador OR lógico y el separador de las expresiones
+generadoras introducidas por la extensión (\cref{cap:ext}). Cuando el motor de
+parseo se encuentra en un estado con la pila de la forma
+$[\,\textsf{[}\,\,\textsf{Expr}\,]$ y el siguiente terminal es \code{|}, el
+\textit{lookahead} estándar de un símbolo no basta: \code{[Expr | \dots ]} puede
+continuar tanto en $\textsf{[}\,\textsf{Expr}\,\textsf{|}\,\textsf{Expr}\,\textsf{]}$
+---un vector explícito cuyo primer elemento es un OR lógico--- como en
+$\textsf{[}\,\textsf{Expr}\,\textsf{|}\,\textsf{Id}\,\textsf{in}\,\textsf{Expr}\,\textsf{]}$
+---un generador---. El constructor de la tabla resuelve este caso particular
+introduciendo un \textit{lookahead} adicional de dos tokens: si tras el \code{|}
+viene un \code{IDENTIFIER} seguido de \code{in}, se opta por la regla del generador;
+en cualquier otro caso, por la regla de OR. La resolución se realiza en el momento
+de la construcción de la tabla, no en tiempo de parseo, por lo que el motor sigue
+siendo estrictamente LALR(1) en ejecución.
+
+\subsection{Motor de parseo}
+
+El motor implementa el algoritmo shift-reduce sobre las tablas precomputadas.
+Mantiene una pila de estados y una pila de valores semánticos en paralelo. En cada
+reducción se invoca una acción semántica que combina los valores semánticos del
+lado derecho de la producción en un nodo del AST.
+
+\section{Jerarquía de precedencias}
+
+La especificación oficial de \hulk{} no establece la precedencia de operadores de
+forma explicita. La gramática implementada codifica la precedencia estandar
+matemática directamente en la jerarquía de no-terminales, evitando la necesidad de
+declaraciones de precedencia separadas. El \cref{lst:prec} muestra el esquema.
+
+\begin{lstlisting}[style=bnf, caption={Codificación de precedencias en la gramática.},
+  label={lst:prec}]
+Expr        -> Assignment
+Assignment  -> OrExpr (':=' Assignment)?
+OrExpr      -> AndExpr ('|' AndExpr)*
+AndExpr     -> NotExpr ('&' NotExpr)*
+NotExpr     -> '!' NotExpr | Equality
+Equality    -> Comparison (('==' | '!=') Comparison)*
+Comparison  -> Concat (('<'|'>'|'<='|'>=') Concat)*
+Concat      -> Additive (('@' | '@@') Additive)*
+Additive    -> Term (('+' | '-') Term)*
+Term        -> Power (('*' | '/' | '%') Power)*
+Power       -> Unary ('^' Power)?     (* asociatividad derecha *)
+Unary       -> '-' Unary | Postfix
+Postfix     -> Atom ('.' id '(' args ')' | '.' id | '[' Expr ']')*
+Atom        -> literal | id | '(' Expr ')' | New | If | Let | ...
+\end{lstlisting}
+
+La asociatividad derecha de la potencia se obtiene mediante la recursión a la
+derecha en la regla \code{Power}: la expresión $2 \,\widehat{}\, 3 \,\widehat{}\, 2$
+se parsea como $2 \,\widehat{}\, (3 \,\widehat{}\, 2) = 2^9 = 512$, no como
+$(2 \,\widehat{}\, 3) \,\widehat{}\, 2 = 64$.
+
+\section{El arbol sintáctico abstracto}
+
+El AST esta definido en \code{src/parser/ast/} mediante enumerados \rust{} con datos
+asociados. El nodo raíz es \code{Program}, que contiene una lista de declaraciones
+(\code{Decl}) y una expresión de entrada (\code{Expr}).
+
+\begin{lstlisting}[style=rustst, caption={Estructura central del AST.},
+  label={lst:ast}]
+pub struct Program {
+    pub declarations: Vec<Decl>,
+    pub entry:        Expr,
+}
+
+pub struct Expr {
+    pub kind: ExprKind,
+    pub id:   u32,    // identificador único para la tabla de tipos
+    pub span: Span,   // línea y columna para mensajes de error
+}
+
+pub enum ExprKind {
+    Literal(Literal),
+    Identifier { name: String },
+    Binary(BinaryExpr),     Unary(UnaryExpr),
+    Postfix(PostfixExpr),   Assign(AssignExpr),
+    Let(LetExpr),           Block(BlockExpr),
+    If(IfExpr),             While(WhileExpr),
+    For(ForExpr),           Call(CallExpr),
+    MethodCall(MethodCallExpr),
+    Access(AccessExpr),     Index(IndexExpr),
+    New(NewExpr),           Base,
+    Is { expr: Box<Expr>, type_name: TypeName },
+    As { expr: Box<Expr>, type_name: TypeName },
+    Vector(VectorExpr),     // <-- extensión propia (cap. 8)
+}
+\end{lstlisting}
+
+Cada \code{Expr} lleva un identificador único \code{id} que se utiliza como clave
+en la tabla \code{expr\_types: HashMap<u32, HulkType>} que el analizador semántico
+construye. El generador de código consulta esta tabla para conocer el tipo
+inferido de cada subexpresión sin tener que reinferir.
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Análisis semántico}
+\label{cap:sem}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{C}{onstruido} el AST, la siguiente fase
+verifica que el programa tenga sentido a nivel de tipos, alcances y referencias.
+Esta fase es responsable de detectar errores como uso de variables no declaradas,
+asignaciones entre tipos incompatibles, llamadas a funciones con número o tipo
+incorrecto de argumentos, y violaciones de la conformidad estructural a protocolos.
+
+\section{Estrategia en dos pasadas}
+
+El analizador semántico opera en dos pasadas claramente diferenciadas sobre la
+lista de declaraciones del programa.
+
+\paragraph{Pasada 1 --- Recolección de declaraciones.}
+Todas las firmas de funciones, los miembros de tipos (atributos y métodos) y los
+cuerpos de protocolos se registran en la estructura \code{TypeHierarchy}. Los
+miembros sin anotación de tipo reciben un marcador \code{HulkType::Unknown} que
+sera resuelto en la segunda pasada. Esta pasada es indispensable para soportar
+\textbf{recursión mutua} entre funciones y tipos: en el momento de verificar el
+cuerpo de \code{foo}, la firma de \code{bar} ya esta disponible aunque \code{bar}
+este declarada después.
+
+\paragraph{Pasada 2 --- Verificación de cuerpos y propagación de tipos.}
+Cada cuerpo de función, cada inicializador de atributo y cada cuerpo de método se
+verifica. El tipo inferido del cuerpo se compara con la anotación declarada si
+existe; si no existe, el tipo inferido se \textbf{escribe de vuelta} en la
+\code{TypeHierarchy} reemplazando el marcador \code{Unknown}.
+
+Esta escritura es \emph{crítica} para la fase de generación de código. Si un atributo
+\code{val = start} no tiene anotación de tipo, la pasada~1 almacena \code{Unknown}; la
+pasada~2 infiere \code{Number} a partir del inicializador; la escritura de vuelta
+hace que \code{Number} este disponible para el generador de código. Sin esta
+escritura, el codegen no podria determinar el tipo \llvm{} correcto del campo.
+
+\begin{lstlisting}[style=rustst, caption={Propagación del tipo inferido en la pasada
+  semántica.}, label={lst:writeback}]
+// Después de inferir el tipo del campo en la pasada 2:
+if let Some(type_info) = self.types.types.get_mut(type_name) {
+    if let Some(attr) = type_info.attributes.get_mut(field_name) {
+        if *attr == HulkType::Unknown {
+            *attr = inferred_type.clone();
+        }
+    }
+}
+\end{lstlisting}
+
+\section{Sistema de tipos}
+
+El sistema de tipos es \textbf{nominal} (la identidad de los tipos depende de su
+nombre y no de su estructura) con \textbf{subtype polymorphism}~\cite{pierce2002}.
+
+\subsection{Categorias de tipo}
+
+\begin{itemize}
+  \item \textbf{Primitivos}: \code{Number} (IEEE-754 \textit{double} de 64 bits),
+    \code{Boolean} (un bit), \code{String} (puntero a cadena C
+    \textit{null}-terminada), \code{Null} (tipo singleton).
+  \item \textbf{Definidos por el usuario}: introducidos mediante \code{type} con
+    herencia simple opcional. Todos heredan transitivamente de \code{Object}.
+  \item \textbf{Protocolos}: tipos de interfaz que listan firmas de métodos. La
+    conformidad es \textbf{estructural}: un tipo conforma a un protocolo si declara
+    todos sus métodos con firmas compatibles, sin necesidad de declarar la
+    relación explicitamente.
+  \item \textbf{Vectores}: el tipo \code{Vector<T>} para colecciones homogeneas de
+    elementos de tipo \code{T} (vease \cref{cap:ext}).
+  \item \textbf{Tipos auxiliares}: \code{Unknown} (marcador en la pasada~1),
+    \code{Never} (tipo de error para evitar cascadas de errores falsos).
+\end{itemize}
+
+\subsection{Relación de conformidad}
+
+La relación de \textit{conformidad} $\preceq$ entre tipos formaliza el subtipado.
+Se define inductivamente y opera tanto sobre la jerarquía nominal (tipos definidos
+por el usuario) como sobre la jerarquía estructural (protocolos).
+
+\begin{definition}[title={Definición: conformidad de tipos}]
+Sean $A, B$ tipos del lenguaje \hulk{}. Se dice que $A$ \emph{conforma a} $B$,
+notación $A \preceq B$, si y sólo si se cumple alguna de las siguientes condiciones:
+\begin{align*}
+  & A = B
+  && \text{(reflexividad)} \\
+  & A \text{ hereda transitivamente de } B
+  && \text{(subtipado nominal)} \\
+  & B \text{ es protocolo y } A \text{ lo implementa}
+  && \text{(conformidad estructural)} \\
+  & A = \mathtt{Null} \text{ y } B \text{ es nominal o } \mathtt{Object}
+  && \text{(nulabilidad)} \\
+  & A = \mathtt{Vec\langle S\rangle},\ B = \mathtt{Vec\langle T\rangle},\ S \preceq T
+  && \text{(covarianza de vectores)} \\
+  & B = \mathtt{Object}
+  && \text{(raíz universal)}
+\end{align*}
+\end{definition}
+
+La conformidad estructural a un protocolo $P$ no se reduce a una verificación
+puramente sintáctica de presencia de métodos: cada firma debe ser \emph{compatible}
+con la del protocolo, donde compatibilidad significa \textbf{covarianza en el tipo
+de retorno y contravarianza en los parámetros}. Estas reglas son las clásicas para
+preservar la seguridad de la sustitución en presencia de subtipado, debidas
+originalmente a Liskov y Wing~\cite{pierce2002}.
+
+\begin{definition}[title={Definición: compatibilidad de firmas con varianza}]
+Sean $\sigma_A = (\bar p_A) \to r_A$ la firma del método declarado en el tipo
+candidato y $\sigma_P = (\bar p_P) \to r_P$ la firma exigida por el protocolo.
+$\sigma_A$ es compatible con $\sigma_P$ si y sólo si:
+\begin{align*}
+  & |\bar p_A| = |\bar p_P|
+  & \text{(aridad)} \\
+  & r_A \preceq r_P
+  & \text{(retorno covariante)} \\
+  & \forall i.\ p_P^{(i)} \preceq p_A^{(i)}
+  & \text{(parámetros contravariantes)}
+\end{align*}
+\end{definition}
+
+Estas reglas se implementan en el método
+\code{signatures\_protocol\_compatible} de la jerarquía de tipos: la conformidad
+se decide recorriendo los métodos del protocolo (y los del protocolo padre, si
+lo tiene) y delegando en la relación \code{conforms} para cada par de tipos. La
+búsqueda del método sube por la cadena de herencia del candidato, de modo que un
+método heredado satisface igual de bien la firma exigida que uno propio. El
+verificador atajará la búsqueda en cuanto detecte que el padre del candidato ya
+conforma al protocolo, evitando reexaminar firmas heredadas.
+
+\subsection{Unificación de tipos en condicionales: el ancestro común más cercano}
+
+Una situación recurrente en \hulk{} es la determinación del tipo de una expresión
+\code{if-elif-else} cuyas ramas devuelven valores de tipos relacionados pero no
+idénticos. La regla aplicada es la habitual en lenguajes con subtipado: el tipo de
+la expresión es el \emph{ancestro común más cercano} (\textit{lowest common
+ancestor}, $\mathrm{lca}$) de los tipos de todas las ramas.
+
+\begin{definition}[title={Definición: ancestro común más cercano}]
+$\mathrm{lca}(A, B)$ se define como el tipo de menor profundidad en la jerarquía
+de herencia que satisface $A \preceq T \land B \preceq T$. Para $n$ ramas se
+define recursivamente:
+$\mathrm{lca}(T_1, T_2, \ldots, T_n) = \mathrm{lca}(\mathrm{lca}(T_1, T_2), T_3,
+\ldots, T_n)$.
+\end{definition}
+
+El algoritmo implementado es directo: se recolecta el conjunto $\mathcal{A}(A)$ de
+todos los ancestros de $A$ (incluido $A$) subiendo por la cadena de
+\code{TypeInfo.parent}, y se asciende desde $B$ hasta encontrar el primer tipo que
+pertenece a $\mathcal{A}(A)$. La existencia de tal tipo está garantizada porque
+todos los tipos heredan transitivamente de \code{Object}, que actúa como elemento
+maximal del orden.
+
+\section{Funciones y constantes predefinidas}
+
+El compilador pre-registra el siguiente conjunto de elementos accesibles desde
+cualquier alcance, sin necesidad de importación:
+
+\begin{table}[H]
+\centering
+\caption{Funciones y constantes predefinidas del runtime \hulk{}.}
+\label{tab:builtins}
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+\textsc{Nombre} & \textsc{Descripción} & \textsc{Tipo} \\
+\midrule
+\code{print(x)}            & Imprime el valor en stdout                & \code{Object → Null} \\
+\code{sqrt(x)}             & Raíz cuadrada                              & \code{Number → Number} \\
+\code{sin(x)}              & Seno (radianes)                            & \code{Number → Number} \\
+\code{cos(x)}              & Coseno (radianes)                          & \code{Number → Number} \\
+\code{exp(x)}              & Exponencial $e^x$                          & \code{Number → Number} \\
+\code{log(b, x)}           & Logaritmo en base $b$                      & \code{(Number, Number) → Number} \\
+\code{rand()}              & Aleatorio uniforme en $[0,1)$              & \code{Number} \\
+\code{range(s, e)}         & Rango iterable $[s, e)$                    & \code{(Number, Number) → Range} \\
+\code{PI}, \code{E}        & Constantes matemáticas                     & \code{Number} \\
+\code{true}, \code{false}  & Literales booleanos                        & \code{Boolean} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Reporte de errores semánticos}
+
+Los errores semánticos se acumulan en un vector \code{Vec<SemanticError>} y se
+reportan todos juntos al final del análisis. Esta estrategia evita la frustración
+del programador que debe corregir un error a la vez. Cada \code{SemanticError}
+incluye el \code{Span} de la expresión o declaración causante, lo que produce
+mensajes con posición precisa:
+
+\begin{lstlisting}[style=base,numbers=none]
+! (12,5) SEMANTIC: type 'Cat' does not implement method 'speak' of protocol 'Animal'
+! (18,3) SEMANTIC: cannot assign value of type 'String' to variable of type 'Number'
+! (24,9) SEMANTIC: function 'foo' expects 2 arguments, 3 given
+\end{lstlisting}
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Generación de código}
+\label{cap:cg}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{C}{ompletado} el análisis semántico, el
+compilador dispone de un AST anotado con tipos y de una jerarquía de tipos
+verificada. La fase de generación de código traduce este AST en un modulo de
+\llvm{}~Intermediate~Representation, listo para ser optimizado y compilado a código
+máquina nativo.
+
+\section{\llvm{}~IR mediante \inkwell{}}
+
+\llvm{}~\cite{lattner2004} es la infraestructura de compilación mas utilizada del
+mundo. Provee una representación intermedia tipada y de bajo nivel, un conjunto
+extensible de \textit{passes} de optimización, y \textit{backends} para una variedad
+de arquitecturas (x86-64, ARM, RISC-V, WebAssembly, etc.).
+
+La biblioteca \inkwell{} es un \textit{wrapper} \rust{} de la API~C de \llvm{} que
+aprovecha el sistema de tipos del lenguaje para impedir construcciones invalidas en
+tiempo de compilación. Por ejemplo, los \textit{builder} de instrucciones rechazan
+operaciones sobre bloques básicos ya terminados, y los valores estan parametrizados
+por el \code{Context} de \llvm{} para impedir mezclas entre contextos distintos.
+
+El estado de la generación de código se centraliza en \code{CodegenContext}, una
+estructura que agrupa:
+
+\begin{itemize}
+  \item \code{context}, \code{module}, \code{builder}: los tres objetos centrales
+    de la API \llvm{}.
+  \item \code{symbols}: pila de alcances para variables locales.
+  \item \code{type\_registry}: layouts de structs \llvm{} y vtables por tipo \hulk{}.
+  \item \code{type\_hierarchy}: jerarquía de tipos del analizador semántico,
+    accesible para resolución de métodos en herencia.
+  \item \code{expr\_types}: tipos anotados por el verificador, consultados durante
+    la generación.
+  \item \code{current\_function}, \code{self\_ptr}, \code{current\_type\_name}:
+    contexto de la función o método en compilación.
+\end{itemize}
+
+\section{Representación de valores: el enum \code{CgValue}}
+
+Dado que \hulk{} tiene tipos heterogeneos (\code{Number} es escalar, \code{String}
+y los objetos son punteros), no existe un único tipo \llvm{} universal. La
+representación uniforme se obtiene mediante un enum \rust{} que transporta el
+valor \llvm{} junto con su categoría de tipo \hulk{}:
+
+\begin{lstlisting}[style=rustst, caption={Representación de valores en codegen.},
+  label={lst:cgvalue}]
+pub enum CgValue<'ctx> {
+    Number(FloatValue<'ctx>),    // LLVM: double
+    Bool(IntValue<'ctx>),        // LLVM: i1
+    Str(PointerValue<'ctx>),     // LLVM: ptr a cadena C
+    Object(PointerValue<'ctx>),  // LLVM: ptr al struct del tipo
+    Vector(PointerValue<'ctx>),  // LLVM: ptr al buffer en heap
+    Null,                        // puntero nulo
+    Void,                        // sin valor (efectos de lado)
+}
+\end{lstlisting}
+
+Las coerciones entre variantes se realizan en \code{coerce\_arg}, que inserta las
+instrucciones \llvm{} necesarias: \code{Bool} a \code{Number} usa \code{uitofp},
+cualquier tipo primitivo a \code{ptr} para paso a \code{print(x: Object)} se
+empaqueta mediante un \code{alloca + store}.
+
+\section{Representación de objetos en memoria}
+
+Todo tipo definido por el usuario se representa como un \code{struct} \llvm{} con
+una distribución de campos uniforme. Los dos primeros campos son metadatos comunes
+a todos los objetos; los siguientes son los campos declarados por el usuario en
+orden \emph{padre-primero}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small]
+  \draw[fill=hulkblue!10, draw=hulkblue] (0,0) rectangle (2,0.8);
+  \draw[fill=hulkblue!10, draw=hulkblue] (2,0) rectangle (4,0.8);
+  \draw[fill=halfgray!10, draw=halfgray] (4,0) rectangle (6,0.8);
+  \draw[fill=halfgray!10, draw=halfgray] (6,0) rectangle (8,0.8);
+  \draw[fill=halfgray!10, draw=halfgray] (8,0) rectangle (10,0.8);
+  \node at (1,0.4) {\code{i32 type\_tag}};
+  \node at (3,0.4) {\code{ptr vtable}};
+  \node at (5,0.4) {\code{padre.f1}};
+  \node at (7,0.4) {\code{padre.f2}};
+  \node at (9,0.4) {\code{propio.f1}};
+  \node[font=\scriptsize] at (1,-0.3) {0};
+  \node[font=\scriptsize] at (3,-0.3) {1};
+  \node[font=\scriptsize] at (5,-0.3) {2};
+  \node[font=\scriptsize] at (7,-0.3) {3};
+  \node[font=\scriptsize] at (9,-0.3) {4};
+  \draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+    (0,-0.5) -- (4,-0.5) node[midway,below,yshift=-4pt] {metadatos};
+  \draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+    (4,-0.5) -- (10,-0.5) node[midway,below,yshift=-4pt] {campos en orden padre-primero};
+\end{tikzpicture}
+\caption{Layout en memoria de un objeto \hulk{} que hereda de un padre con dos
+  campos.}
+\label{fig:layout}
+\end{figure}
+
+El orden \textit{padre primero} es deliberado: garantiza que un puntero a un
+objeto del tipo \code{Dog} (que hereda de \code{Animal}) sea \textbf{bit-compatible}
+con un puntero a \code{Animal} respecto a los campos heredados. Esto evita el costo
+de reinterpretación de bits o de tablas de desplazamiento que serian necesarias
+con otros layouts.
+
+\section{Tablas de métodos virtuales (vtables)}
+
+El polimorfismo dinámico de \hulk{} se implementa mediante \textit{vtables}, la
+técnica estandar utilizada por C++, Java (compilado JIT) y otros lenguajes con
+herencia y polimorfismo.
+
+Para cada tipo se crea una \textbf{vtable global} (un \code{global} \llvm{}) que
+contiene punteros a los métodos del tipo, en un orden fijo: primero los métodos
+heredados del padre, luego los nuevos. Cuando un tipo hace \textit{override} de un
+método del padre, la posición en la vtable se conserva pero el puntero se
+reemplaza por el del nuevo método.
+
+\begin{lstlisting}[style=llvmst, caption={Vtable global para un tipo \code{Dog} que
+  redefine \code{speak} y hereda \code{move}.}, label={lst:vtable}]
+%VTable_Dog = type { ptr, ptr }
+
+@vtable_Dog = global %VTable_Dog {
+    ptr @__hulk_method_Dog_speak,      ; override
+    ptr @__hulk_method_Animal_move     ; heredado del padre
+}
+\end{lstlisting}
+
+El despacho de un método \code{x.speak()} sobre un valor \code{x} de tipo estático
+\code{Animal} se compila como un acceso indirecto en tres pasos: cargar el puntero
+a vtable desde el campo~1 del objeto, indexar al slot precalculado para el método
+\code{speak}, e invocar el puntero a función con la convención de llamada habitual
+(\code{self} en la primera posición, argumentos a continuación).
+
+\subsection{Despacho de métodos a través de un protocolo}
+
+El esquema de vtables es suficiente cuando el tipo estático del receptor es un tipo
+nominal: en ese caso, el orden de los \textit{slots} es el mismo en todas las
+clases de la jerarquía y la posición del método se calcula en tiempo de
+compilación. Sin embargo, cuando el tipo estático es un protocolo \code{P}, los
+\textit{slots} pueden diferir entre tipos conformantes: si \code{A} declara
+\{\code{m},\code{n}\} y \code{B} declara \{\code{n},\code{m}\}, la posición de
+\code{m} en cada vtable es distinta, y un acceso por índice fijo daría el método
+equivocado.
+
+La estrategia elegida en este compilador resuelve esa indeterminación con un
+\textit{switch} sobre el \code{type\_tag} leído en tiempo de ejecución, generando
+una rama por cada tipo conforme conocido y, en cada rama, una llamada
+\emph{directa} al método correspondiente. La construcción es local a la expresión
+de despacho ---no requiere tablas globales adicionales--- y se beneficia de la
+optimización clásica que \llvm{} aplica a los \code{switch}: tras \code{simplifycfg}
+se transforma en una \textit{jump table}, lo que asintóticamente tiene el mismo
+coste que un acceso a vtable. El bloque \code{default} del switch se marca
+\code{unreachable} porque el verificador de tipos garantiza que el receptor
+realmente conforma al protocolo:
+
+\begin{lstlisting}[style=llvmst,caption={Despacho a través de un protocolo
+  \code{Measurable} con dos tipos conformes.}]
+%tag = load i32, ptr %b
+
+switch i32 %tag, label %proto_unreachable [
+  i32 3, label %proto_case_MBox
+  i32 5, label %proto_case_Cylinder
+]
+
+proto_case_MBox:
+  %r1 = call f64 @__hulk_method_MBox_measure(ptr %b)
+  br label %proto_merge
+
+proto_case_Cylinder:
+  %r2 = call f64 @__hulk_method_Cylinder_measure(ptr %b)
+  br label %proto_merge
+
+proto_unreachable:
+  unreachable                  ; semánticamente inalcanzable
+
+proto_merge:
+  %result = phi f64 [ %r1, %proto_case_MBox ], [ %r2, %proto_case_Cylinder ]
+\end{lstlisting}
+
+La decisión entre despacho por vtable (para tipos nominales) y despacho por
+\textit{switch} (para protocolos) se toma en \code{method\_dispatch} del módulo
+\code{codegen::context} consultando la categoría sintáctica del tipo estático del
+receptor.
+
+\section{Etiquetas de tipo en orden DFS}
+
+El operador \code{is} (\code{x is Dog}) es una operación frecuente en código OOP con
+herencia, y se utiliza también internamente en la implementación del operador
+\code{as} (\textit{downcast}). Implementarlo eficientemente requiere un invariante
+no trivial sobre la asignación de etiquetas de tipo.
+
+\paragraph{Asignación DFS pre-orden.}
+Durante la compilación, los tipos reciben \textbf{etiquetas enteras en orden de
+recorrido en profundidad de la jerarquía de herencia}, en pre-orden. El tipo padre
+recibe su etiqueta antes que sus hijos. Como consecuencia, \textbf{todos los
+subtipos directos e indirectos de un tipo $T$ forman un intervalo contiguo}
+$[\textsf{min\_tag}_T, \textsf{max\_tag}_T]$ en el espacio de etiquetas.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  level distance=1.5cm, sibling distance=2.5cm,
+  every node/.style={rectangle, draw=hulkblue, fill=hulkblue!5, rounded corners=2pt,
+    minimum width=2cm, minimum height=0.6cm, font=\small},
+  edge from parent/.style={draw=halfgray, -Stealth}]
+  \node {Animal [1,5]}
+    child { node {Dog [2,4]}
+      child { node {Poodle [3,3]} }
+      child { node {Beagle [4,4]} }
+    }
+    child { node {Cat [5,5]} };
+  \node[draw=none, fill=none, right=2cm, align=left, font=\footnotesize] at (5,0)
+    {\code{poodle is Dog}:    $2 \leq 3 \leq 4$ \done\\[2pt]
+     \code{poodle is Animal}: $1 \leq 3 \leq 5$ \done\\[2pt]
+     \code{cat is Dog}:       $2 \leq 5 \leq 4$ \miss};
+\end{tikzpicture}
+\caption[Asignación DFS de etiquetas]{Asignación DFS pre-orden de etiquetas de
+  tipo. El test \code{is} se reduce a una verificación de pertenencia a un
+  intervalo, computable en tiempo constante.}
+\label{fig:dfs-tags}
+\end{figure}
+
+\paragraph{Implementación del operador \code{is}.}
+Gracias a esta asignación, el código \llvm{} generado para \code{x is Dog} es
+simplemente:
+
+\begin{lstlisting}[style=llvmst, numbers=none]
+  %tag = load i32, ptr %x
+  %ge  = icmp uge i32 %tag, 2       ; min_tag(Dog)
+  %le  = icmp ule i32 %tag, 4       ; max_tag(Dog)
+  %res = and i1 %ge, %le
+\end{lstlisting}
+
+Esto es $O(1)$ en tiempo de ejecución, sin consultar ninguna tabla ni recorrer la
+jerarquía. La técnica esta documentada en implementaciones eficientes de RTTI en
+C++~\cite{bjarne1994}.
+
+\section{El operador \code{as}: downcast con verificación}
+
+El operador \code{x as T} realiza un \textit{downcast}: convierte un valor de tipo
+base (por ejemplo \code{Animal}) al tipo derivado \code{T} (por ejemplo \code{Dog}).
+En \hulk{}, esto debe ser \textit{seguro}: si el objeto realmente no es de tipo
+\code{T}, la ejecución debe abortar con un mensaje de error en lugar de continuar
+con un puntero malformado.
+
+El código generado primero verifica el rango de etiquetas (igual que en \code{is}).
+Si la verificación falla, llama a la función de \textit{runtime}
+\code{hulk\_type\_error}, que imprime el mensaje de error y llama a \code{abort(3)}.
+Si la verificación tiene exito, el puntero original se utiliza directamente: no se
+requiere reinterpretación de bits porque el layout es compatible por la
+organización padre-primero.
+
+\section{La palabra clave \code{base()}}
+
+Dentro de un método, \code{base(args)} invoca la implementación del padre. A
+diferencia del despacho virtual --- que cargaria la vtable y podria producir una
+llamada recursiva si el padre llama de vuelta al método del hijo ---, \code{base()}
+es una \textbf{llamada directa estática}: el nombre de la función del padre se
+conoce en tiempo de compilación.
+
+El código generador busca recursivamente en la jerarquía hasta encontrar el tipo
+que realmente implementa el método (no necesariamente el padre inmediato, si
+varios niveles intermedios solo lo heredan), y emite una llamada directa por
+nombre.
+
+\section{Pipeline de optimización}
+
+El IR generado por el codegen es deliberadamente sencillo y abundante en
+\textit{allocas}: cada variable local se modela como una secuencia
+\code{alloca + store + load}. Esta forma facilita la generación correcta pero es
+ineficiente sin optimización.
+
+Antes de la emisión de código objeto se aplica el \textit{pipeline} del nuevo
+\textit{pass manager} de \llvm{}~17 con la siguiente secuencia:
+
+\begin{table}[H]
+\centering
+\caption{Passes de optimización aplicados al IR.}
+\label{tab:passes}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textsc{Pass} & \textsc{Efecto} \\
+\midrule
+\code{mem2reg} & Promueve patrones \code{alloca}/\code{store}/\code{load} a
+  registros SSA virtuales. Es el habilitador fundamental de todas las
+  optimizaciones subsiguientes. \\
+\code{instcombine} & Plegado de constantes, simplificación algebraica, eliminación
+  de operaciones redundantes (por ejemplo, $x \oplus 0 = x$, $x \cdot 1 = x$). \\
+\code{reassociate} & Reordena expresiones asociativas para maximizar la oportunidad
+  de plegado por \code{instcombine}. \\
+\code{simplifycfg} & Elimina bloques básicos muertos, fusiona bloques redundantes,
+  simplifica el grafo de flujo de control. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Esta combinación produce un IR significativamente mas compacto y próximo al código
+generado por compiladores maduros como \code{gcc -O2}.
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Runtime y compilación final}
+\label{cap:rt}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{l} código \llvm{} producido por el
+\textit{frontend} no es autosuficiente: depende de un conjunto de funciones de
+soporte para operaciones como impresión, formato de números, allocación de cadenas
+y manejo de colecciones. Estas funciones forman la \textit{biblioteca de runtime},
+escrita en~C y enlazada con cada ejecutable producido.
+
+\section{La biblioteca de runtime en C}
+
+El \textit{runtime} se compila a un archivo estático \code{hulk\_runtime.a} desde
+\code{runtime/hulk\_runtime.c}. Provee las siguientes funciones, todas con enlace~C
+y nombres no decorados para que sean accesibles desde el código generado.
+
+\begin{table}[H]
+\centering
+\caption{Funciones de la biblioteca de runtime.}
+\label{tab:runtime}
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+\textsc{Función} & \textsc{Descripción} \\
+\midrule
+\code{hulk\_print(ptr)}            & Imprime cadena $+$ \textit{newline} a stdout. \\
+\code{hulk\_str\_from\_number(d)}  & Convierte \code{double} a C string;
+  formatea enteros sin parte decimal. \\
+\code{hulk\_str\_concat(a,b)}      & Concatenación para el operador \code{@}. \\
+\code{hulk\_str\_concat\_space(a,b)} & Concatenación con espacio para
+  \code{@@}. \\
+\code{hulk\_str\_eq(a,b)}          & Igualdad de cadenas por valor. \\
+\code{hulk\_str\_size(s)}          & Longitud en bytes de la cadena. \\
+\code{hulk\_vec\_alloc(n,sz)}      & Alloca buffer: header (8 bytes) $+$ $n \times 8$
+  bytes de elementos. \\
+\code{hulk\_vec\_get(p,i,sz)}      & Devuelve puntero al elemento $i$ con
+  verificación de limites. \\
+\code{hulk\_vec\_size(p)}          & Lee el header y devuelve el conteo. \\
+\code{hulk\_range\_alloc(s,e)}     & Crea iterador para el rango $[s, e)$. \\
+\code{hulk\_range\_next(p)}        & Avanza el iterador; devuelve \code{true} si
+  hay mas elementos. \\
+\code{hulk\_range\_current(p)}     & Valor actual del iterador. \\
+\code{hulk\_rand()}                & Numero aleatorio uniforme en $[0, 1)$. \\
+\code{hulk\_type\_error(p)}        & Imprime el mensaje y aborta (\code{as} fallido). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Layout en memoria de vectores y rangos}
+
+Las dos estructuras compuestas del \textit{runtime}, \textbf{vectores} y
+\textbf{rangos}, tienen layouts compactos diseñados para minimizar el número de
+\textit{allocs} y maximizar la localidad de acceso.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small]
+  % Vector
+  \node at (-0.8,0.4) {\code{Vector}:};
+  \draw[fill=hulkblue!8, draw=hulkblue] (0,0) rectangle (2,0.8);
+  \draw[fill=halfgray!8, draw=halfgray] (2,0) rectangle (3.5,0.8);
+  \draw[fill=halfgray!8, draw=halfgray] (3.5,0) rectangle (5,0.8);
+  \draw[fill=halfgray!8, draw=halfgray] (5,0) rectangle (6.5,0.8);
+  \draw[fill=halfgray!8, draw=halfgray] (6.5,0) rectangle (8,0.8);
+  \node at (1,0.4) {\code{i64 count}};
+  \node at (2.75,0.4) {\code{elem[0]}};
+  \node at (4.25,0.4) {\code{elem[1]}};
+  \node at (5.75,0.4) {\code{elem[2]}};
+  \node at (7.25,0.4) {\code{\ldots}};
+  \node[font=\scriptsize] at (1,-0.3) {8 bytes};
+  \node[font=\scriptsize] at (4.25,-0.3) {8 bytes c.u.};
+  % Range
+  \node at (-0.8,-1.8) {\code{Range}:};
+  \draw[fill=hulkblue!8, draw=hulkblue] (0,-2.2) rectangle (2,-1.4);
+  \draw[fill=hulkblue!8, draw=hulkblue] (2,-2.2) rectangle (4,-1.4);
+  \draw[fill=hulkaccent!8, draw=hulkaccent] (4,-2.2) rectangle (6,-1.4);
+  \node at (1,-1.8) {\code{f64 start}};
+  \node at (3,-1.8) {\code{f64 end}};
+  \node at (5,-1.8) {\code{f64 current}};
+  \node[font=\scriptsize] at (3,-2.5) {24 bytes totales};
+\end{tikzpicture}
+\caption{Layouts en memoria de vectores y rangos.}
+\label{fig:layouts-rt}
+\end{figure}
+
+El layout de vector tiene exactamente \textbf{una palabra de cabecera}
+($8$ bytes con el conteo) seguida del area de datos. Esto permite calcular el
+puntero al elemento $i$ con una única operación de aritmética de punteros:
+\code{vec + 8 + 8*i}.
+
+\section{Pipeline AOT completo}
+
+Al invocar el compilador con \code{./hulk source.hulk}, el proceso completo es:
+
+\begin{enumerate}
+  \item Análisis léxico, sintáctico y semántico del fuente.
+  \item Generación de \llvm{}~IR para todas las declaraciones y la expresión
+    principal.
+  \item Adición de una función \code{main} compatible con C que llama a
+    \code{\_\_hulk\_entry()} y retorna 0.
+  \item Optimización del IR con el pipeline descrito en la \cref{tab:passes}.
+  \item Emisión de código objeto a un fichero temporal mediante el método
+    \code{write\_to\_file} de la \code{TargetMachine} de \llvm{}.
+  \item Enlace con \code{gcc}:
+    \begin{lstlisting}[style=base,numbers=none,xleftmargin=0pt]
+gcc /tmp/hulk_program.o hulk_runtime.a -o ./output -lm
+    \end{lstlisting}
+\end{enumerate}
+
+El ejecutable resultante es un binario \textbf{ELF x86-64 autocontenido} que no
+requiere a \llvm{} en tiempo de ejecución. Sus únicas dependencias son la libc del
+sistema y la \code{libm}.
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Extensión del lenguaje: vectores con expresiones generadoras}
+\label{cap:ext}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{ste} capítulo presenta la extensión
+central del lenguaje implementada en este compilador: un \textbf{sistema de
+vectores con expresiones generadoras}, estáticamente tipado, integrado con el
+sistema de protocolos del lenguaje y con verificación segura de índices en
+tiempo de ejecución. La extensión modifica simultáneamente la sintaxis ---añade
+literales de vector, una notación generadora inspirada en la \textit{set-builder
+notation} matemática, y un operador de indexación---, el sistema de tipos
+---introduce un constructor de tipos paramétrico $\mathtt{Vector\langle T\rangle}$
+con regla de varianza definida---, la semántica operacional ---introduce reglas
+de evaluación con un mecanismo de aborto controlado para índices inválidos--- y
+el \textit{runtime} del lenguaje ---añade primitivas de asignación, acceso y
+medida de tamaño con verificación de límites.
+
+\section{Motivación}
+
+En su núcleo básico, \hulk{} no incluye estructuras de datos compuestas: las
+únicas formas no escalares disponibles son los rangos producidos por la función
+\code{range(s,e)} (que tienen una semántica puramente iterable, sin acceso
+aleatorio) y los tipos definidos por el usuario. Para escribir algoritmos
+elementales que operen sobre colecciones ---calcular el promedio de una lista de
+números, aplicar una función a cada elemento, filtrar los valores que cumplen
+una condición--- el programador debe declarar un tipo propio que encapsule la
+lógica de tamaño, acceso e iteración. Esta declaración no es difícil pero es
+sistemáticamente verbosa, en un lenguaje cuya virtud central es precisamente la
+concisión expresiva.
+
+La propia especificación del lenguaje reconoce esta carencia y bosqueja, en
+una sección dedicada de su apéndice gramatical, un sistema de vectores como
+extensión natural. La extensión presentada en este capítulo toma esa propuesta
+como punto de partida y la enriquece en cuatro sentidos:
+
+\begin{itemize}
+  \item agrega \textbf{indexación} con la sintaxis \code{v[i]} y verificación de
+    limites en \textit{runtime};
+  \item integra los vectores con el \textbf{protocolo \code{Iterable}}, permitiendo
+    usarlos en \code{for} igual que los rangos;
+  \item define el \textbf{tipo \code{Vector<T>}} en el sistema de tipos con
+    inferencia bidireccional;
+  \item proporciona un \textbf{runtime con bounds-checking} que aborta de forma
+    controlada en accesos invalidos.
+\end{itemize}
+
+\section{Definición formal de la sintaxis}
+
+La extensión agrega tres construcciones sintácticas nuevas a la gramática de
+\hulk{}: el vector explicito, la expresión generadora y la indexación.
+
+\begin{lstlisting}[style=bnf, caption={Nuevas producciones gramaticales para la
+  extensión.}, label={lst:gram-vec}]
+(* Atom es extendido con vectores literales *)
+Atom        -> ... | VectorLiteral
+
+VectorLiteral -> '[' ']'                                     (* vector vacio *)
+              | '[' ArgListNonEmpty ']'                       (* explicito *)
+              | '[' Expr '|' IDENTIFIER 'in' Expr ']'         (* generador *)
+
+(* Postfix es extendido con indexación *)
+Postfix     -> Atom (... | '[' Expr ']')*                     (* indexación *)
+\end{lstlisting}
+
+\subsection{Vectores explicitos}
+
+Un \textbf{vector explicito} se construye listando sus elementos entre corchetes,
+separados por comas. El tipo del vector se infiere a partir del tipo de sus
+elementos.
+
+\begin{lstlisting}[style=hulkst,caption={Vectores explicitos.}]
+let v     = [1, 2, 3, 4, 5]               in print(v[2]);   // 3
+let names = ["Alice", "Bob", "Carol"]     in print(names[0]);
+let empty = []                            in print(size(empty)); // 0
+\end{lstlisting}
+
+\subsection{Expresiones generadoras}
+
+La sintaxis central de la extensión es la \textbf{expresión generadora}, que crea
+un nuevo vector aplicando una expresión a cada elemento de un iterable.
+
+\begin{lstlisting}[style=hulkst,caption={Expresiones generadoras.}]
+// Cuadrados de 0 a 4
+let squares = [x * x | x in range(0, 5)] in
+print(squares[3]);                                 // 9
+
+// Transformación de otro vector
+let v       = [1, 2, 3]                  in
+let doubled = [x * 2 | x in v]           in
+print(doubled[1]);                                 // 4
+
+// El cuerpo puede usar variables del entorno
+let factor = 10 in
+let scaled = [x * factor | x in range(1, 4)] in
+print(scaled[2]);                                  // 30
+\end{lstlisting}
+
+La sintaxis es \code{[body | var in iterable]}, donde:
+\begin{itemize}
+  \item \code{body} es cualquier expresión \hulk{} que puede usar \code{var} y
+    variables del entorno circundante;
+  \item \code{var} es la variable de iteración, local al cuerpo;
+  \item \code{iterable} es un \code{Range} o un \code{Vector<T>} de cualquier
+    tipo;
+  \item el separador \code{|} coincide con el del operador OR lógico; la
+    ambigüedad se resuelve por contexto (vease el conflicto declarado en la
+    gramática).
+\end{itemize}
+
+\subsection{Indexación}
+
+Los elementos de un vector se acceden con la sintaxis \code{v[i]}, donde \code{i}
+es una expresión de tipo \code{Number}.
+
+\begin{lstlisting}[style=hulkst,caption={Indexación con expresión calculada.}]
+let v = [10, 20, 30]                                  in
+let i = 1                                              in
+v[i + 1]   // equivalente a v[2] = 30
+\end{lstlisting}
+
+El indice se convierte de \code{Number} (\textit{double}) a entero en tiempo de
+compilación mediante \code{fptosi}. El \textit{runtime} verifica que el indice sea
+no-negativo y menor que el tamaño del vector; en caso contrario, aborta con un
+mensaje descriptivo.
+
+\section{Definición formal de la semántica}
+
+Para precisar el significado de las nuevas construcciones, se presentan las
+reglas de tipado y la semántica operacional en estilo natural.
+
+\subsection{Reglas de tipado}
+
+\begin{definition}[title={Definición: tipos de la extensión}]
+Se introduce un nuevo constructor de tipos \code{Vector<T>} paramétrico en un
+parámetro \code{T}. La conformidad de vectores es \textbf{invariante} en el
+parámetro: $\code{Vector<A>} \leq \code{Vector<B>} \iff A = B$.
+\end{definition}
+
+Las reglas de tipado para las nuevas expresiones son las siguientes, donde
+$\Gamma$ es el ambiente de tipos y $\vdash$ denota el juicio de tipado:
+
+\begin{align*}
+  & \frac{\Gamma \vdash e_1 : T \quad \cdots \quad \Gamma \vdash e_n : T}
+         {\Gamma \vdash [e_1, \ldots, e_n] : \code{Vector<T>}}
+  & \text{(vector explicito)} \\[8pt]
+  & \frac{\Gamma \vdash e : \code{Range} \quad \Gamma, x : \code{Number} \vdash b : T}
+         {\Gamma \vdash [b \mid x \text{ in } e] : \code{Vector<T>}}
+  & \text{(generador sobre rango)} \\[8pt]
+  & \frac{\Gamma \vdash e : \code{Vector<S>} \quad \Gamma, x : S \vdash b : T}
+         {\Gamma \vdash [b \mid x \text{ in } e] : \code{Vector<T>}}
+  & \text{(generador sobre vector)} \\[8pt]
+  & \frac{\Gamma \vdash e : \code{Vector<T>} \quad \Gamma \vdash i : \code{Number}}
+         {\Gamma \vdash e[i] : T}
+  & \text{(indexación)}
+\end{align*}
+
+\subsection{Semántica operacional de gran paso}
+
+La semántica de evaluación de los vectores y de los generadores adopta una
+estrategia \textbf{ansiosa} (\textit{eager}): todos los elementos se calculan en
+orden de izquierda a derecha y se almacenan en un buffer recién asignado
+\emph{antes} de que la expresión completa retorne. Esta elección está alineada
+con la semántica del resto de \hulk{} ---donde los argumentos de funciones, los
+lados de los operadores binarios y los inicializadores de \code{let} se evalúan de
+forma estricta--- y se justifica con detalle en la \cref{sec:decisiones-ext}.
+
+Se presenta la semántica en estilo de \textit{gran paso} (también llamada
+\textit{natural} o \textit{evaluativa}): el juicio
+$\sigma \vdash e \Downarrow v,\,\sigma'$ se lee \textit{``en el entorno $\sigma$,
+la expresión $e$ se evalúa al valor $v$ produciendo el entorno $\sigma'$''}. El
+entorno $\sigma$ asocia variables a valores, y $\sigma[x \mapsto v]$ denota la
+extensión que añade el binding $x \mapsto v$ ocultando cualquier binding previo.
+
+\begin{small}
+\[
+  \frac{
+    \sigma \vdash e_1 \Downarrow v_1,\,\sigma_1
+    \quad \cdots \quad
+    \sigma_{n-1} \vdash e_n \Downarrow v_n,\,\sigma_n
+  }{
+    \sigma \vdash [e_1, \ldots, e_n] \Downarrow \mathsf{vec}(v_1, \ldots, v_n),\,\sigma_n
+  }
+  \tag{E-VecExp}
+\]
+
+\[
+  \frac{
+    \sigma \vdash e \Downarrow \mathsf{vec}(v_1, \ldots, v_n),\,\sigma_0
+    \quad
+    \forall i.\ \sigma_0[x \mapsto v_i] \vdash b \Downarrow w_i,\,\sigma_i
+  }{
+    \sigma \vdash [b \mid x \,\text{in}\, e] \Downarrow \mathsf{vec}(w_1, \ldots, w_n),\,\sigma_n
+  }
+  \tag{E-VecGenV}
+\]
+
+\[
+  \frac{
+    \sigma \vdash e \Downarrow \mathsf{range}(s, t),\,\sigma_0 \quad
+    n = \max(0,\, \lfloor t - s \rfloor) \quad
+    \forall i \in [0,n).\ \sigma_0[x \mapsto s + i] \vdash b \Downarrow w_i
+  }{
+    \sigma \vdash [b \mid x \,\text{in}\, e] \Downarrow \mathsf{vec}(w_0, \ldots, w_{n-1}),\,\sigma_n
+  }
+  \tag{E-VecGenR}
+\]
+
+\[
+  \frac{
+    \sigma \vdash e \Downarrow \mathsf{vec}(v_0, \ldots, v_{n-1}),\,\sigma_0 \quad
+    \sigma_0 \vdash i \Downarrow k,\,\sigma_1 \quad 0 \leq \lfloor k \rfloor < n
+  }{
+    \sigma \vdash e[i] \Downarrow v_{\lfloor k \rfloor},\,\sigma_1
+  }
+  \tag{E-IndexOk}
+\]
+
+\[
+  \frac{
+    \sigma \vdash e \Downarrow \mathsf{vec}(v_0, \ldots, v_{n-1}),\,\sigma_0 \quad
+    \sigma_0 \vdash i \Downarrow k,\,\sigma_1 \quad \lnot(0 \leq \lfloor k \rfloor < n)
+  }{
+    \sigma \vdash e[i] \Downarrow \bot
+  }
+  \tag{E-IndexErr}
+\]
+\end{small}
+
+La regla \textsc{E-IndexErr} captura el comportamiento de aborto controlado del
+\textit{runtime}: cuando el índice está fuera de rango, no se produce un valor sino
+una transición a un estado de error (notado $\bot$) que el \textit{runtime}
+materializa imprimiendo un mensaje en \code{stderr} y llamando a \code{abort(3)}.
+Este modelo de fallos sigue el principio de Hoare según el cual \textit{una
+condición que no debería ocurrir no debe producir un valor arbitrario; debe
+detener la ejecución de la manera más visible posible}~\cite{hoare1985}.
+
+\section{Realización en el código}
+
+\subsection{Modificaciones al lexer}
+
+Ninguna. Los tokens \code{[}, \code{]}, \code{|}, e \code{in} ya existen en el
+lexer para otras construcciones. La extensión reutiliza el conjunto existente sin
+agregar terminales.
+
+\subsection{Modificaciones al parser}
+
+Se agregan las producciones del \cref{lst:gram-vec}. El único conflicto
+shift/reduce nuevo aparece en \code{[Expr | }$\ldots$ porque el token \code{|}
+podria iniciar también el operador OR lógico de la regla \code{OrExpr}. El
+conflicto se resuelve con un \textit{lookahead} de dos tokens: si tras \code{|}
+viene un \code{IDENTIFIER} seguido de \code{in}, se reduce hacia
+\code{VectorLiteral}; en cualquier otro caso, se desplaza hacia \code{OrExpr}.
+
+El AST se extiende con dos variantes:
+
+\begin{lstlisting}[style=rustst, caption={Nuevas variantes del AST para la
+  extensión.}, label={lst:ast-vec}]
+pub enum VectorExpr {
+    Explicit  { elements: Vec<Expr>, span: Span },
+    Generator { body: Box<Expr>, var: String,
+                iterable: Box<Expr>, span: Span },
+}
+
+pub struct IndexExpr {
+    pub collection: Box<Expr>,
+    pub index:      Box<Expr>,
+    pub span:       Span,
+}
+\end{lstlisting}
+
+\subsection{Modificaciones al semántico}
+
+El verificador de tipos implementa las reglas de la sección anterior: para un
+vector explicito, infiere el tipo del primer elemento y verifica que los demas
+sean compatibles; para una expresión generadora, evalua el tipo del iterable y
+construye un ambiente extendido $\Gamma, x : T$ antes de tipar el cuerpo; para
+una indexación, verifica que la colección sea \code{Vector<T>} para algun \code{T}
+y que el indice sea \code{Number}.
+
+\subsection{Modificaciones al codegen}
+
+La generación de código para vectores explicitos es directa: una llamada a
+\code{hulk\_vec\_alloc} para reservar el buffer, seguida de una secuencia de
+\code{hulk\_vec\_get} (para obtener punteros a los slots) y \code{store} (para
+escribir los valores).
+
+La generación para una expresión generadora es mas elaborada y se ilustra en el
+\cref{fig:cfg-gen}: requiere construir un bucle con cuatro bloques básicos
+(\code{gen\_cond}, \code{gen\_body}, \code{gen\_end}, mas el bloque de entrada).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  every node/.style={font=\small},
+  bb/.style={rectangle, draw=hulkblue, fill=hulkblue!8, rounded corners=2pt,
+    minimum width=4cm, minimum height=0.9cm, align=center},
+  arr/.style={-Stealth, thick, color=hulkblue}
+]
+  \node[bb] (e)  {\textbf{entry}\\\scriptsize compute count, alloc result, init idx=0};
+  \node[bb] (c)  [below=of e] {\textbf{gen\_cond}\\\scriptsize idx < count?};
+  \node[bb] (b)  [below=of c, xshift=-2.5cm] {\textbf{gen\_body}\\\scriptsize
+    fetch elem, eval body, store, idx++};
+  \node[bb] (x)  [below=of c, xshift=2.5cm]  {\textbf{gen\_end}\\\scriptsize
+    return result};
+  \draw[arr] (e) -- (c);
+  \draw[arr] (c) -- node[left]{si} (b);
+  \draw[arr] (c) -- node[right]{no} (x);
+  \draw[arr] (b.east) .. controls (3,-3) and (2,-1.5) .. (c.east);
+\end{tikzpicture}
+\caption{Grafo de flujo de control del código generado para una expresión
+  generadora.}
+\label{fig:cfg-gen}
+\end{figure}
+
+Una sutileza importante: el calculo del \code{count} para un generador sobre un
+\code{Range} hace \code{count = floor(end - start)}. Sin precauciones, un rango con
+\code{start > end} produciria \code{count < 0}, lo que provocaria que la
+instrucción \code{fptosi} de \llvm{} generara un \textit{poison value} y el
+\textit{behavior undefined}. La extensión inserta un \textit{clamp} a
+$[0, \textsf{i32::MAX}]$:
+
+\begin{lstlisting}[style=llvmst, caption={Clamp del count para evitar poison en
+  fptosi.}, label={lst:clamp}]
+%diff   = fsub double %end, %start
+%is_neg = fcmp ult double %diff, 0.0
+%nn     = select i1 %is_neg, double 0.0, double %diff
+%hi     = fcmp ogt double %nn, 2147483647.0
+%clamp  = select i1 %hi, double 2147483647.0, double %nn
+%count  = fptosi double %clamp to i32
+\end{lstlisting}
+
+\section{Análisis comparativo con otros lenguajes}
+
+La construcción implementada esta emparentada con una familia de construcciones
+presentes en otros lenguajes bajo nombres como \textit{list comprehension},
+\textit{for comprehension} o \textit{generator expression}. A continuación se
+compara la extensión propuesta con las equivalentes mas relevantes.
+
+\subsection{Notación matemática de conjuntos}
+
+La inspiración histórica de todas estas construcciones es la \textbf{notación de
+construcción de conjuntos} (\textit{set-builder notation}) introducida en la
+teoría axiomática de conjuntos a principios del siglo~XX:
+$$ S = \{ f(x) \mid x \in A \land P(x) \}. $$
+
+Esta notación, leída \textit{``el conjunto de los $f(x)$ tales que $x$ pertenece a
+$A$ y $P(x)$ se cumple''}, separa con una barra vertical la expresión generadora
+de los cuantificadores. La extensión propuesta toma directamente esta convención
+sintáctica: \code{[body | var in iterable]} es la traducción literal de la
+notación matemática al ASCII, con la barra vertical \code{|} como separador y el
+\textit{keyword} \code{in} en sustitución del símbolo $\in$. Es importante notar
+que la notación matemática puede tener \emph{cualquier} número de generadores y de
+predicados; la extensión que aquí se presenta admite, por simplicidad de la
+gramática LALR(1), exactamente un generador y ningún predicado. La omisión es
+deliberada (vease \cref{sec:decisiones-ext}) y la pérdida de expresividad es
+moderada porque cualquier filtro puede emularse insertando un \code{if-else} en el
+cuerpo de la comprensión.
+
+\subsection{Comparación con Python}
+
+Python distingue entre \textbf{list comprehensions} (\textit{eager}) y
+\textbf{generator expressions} (\textit{lazy}):
+
+\begin{lstlisting}[language=Python,style=base,caption={Comprehensions y generators
+  en Python.}]
+squares = [x**2 for x in range(5)]      # list comp, eager
+gen     = (x**2 for x in range(5))      # generator expr, lazy
+\end{lstlisting}
+
+La sintaxis de \hulk{} \code{[body | var in iterable]} corresponde a las
+\textit{list comprehensions} de Python tanto en comportamiento (eager,
+materializan toda la lista) como en semántica de alcance (\code{var} es local al
+cuerpo, no captura el contexto).
+
+Diferencias relevantes:
+
+\begin{itemize}
+  \item Python admite \textbf{filtros} (\code{if x > 0}) y \textbf{multiples
+    iteradores} (\code{for x in xs for y in ys}); la extensión de \hulk{} se
+    limita a un solo iterador sin filtro. Esta simplificación fue intencional:
+    mantiene la gramática LALR(1) libre de ambigüedades difíciles y reduce la
+    complejidad del codegen.
+  \item Python es dinámicamente tipado y permite vectores heterogeneos; \hulk{}
+    es estáticamente tipado e impone homogeneidad: todos los elementos deben
+    conformar al mismo tipo.
+\end{itemize}
+
+\subsection{Comparación con Haskell}
+
+Haskell ofrece \textit{list comprehensions} con una sintaxis aun mas cercana a la
+notación matemática:
+
+\begin{lstlisting}[language=Haskell,style=base,caption={List comprehensions en
+  Haskell.}]
+squares = [x^2 | x <- [0..4]]
+evens   = [x | x <- [1..100], even x]
+\end{lstlisting}
+
+La evaluación en Haskell es \textbf{perezosa por defecto}: los elementos se
+computan solo cuando son demandados. Esto permite construir listas infinitas como
+\code{nats = [0..]}, donde los valores se calculan incrementalmente.
+
+\hulk{} adopta evaluación \textbf{ansiosa}. Las razones de esta decisión se
+exponen en la \cref{sec:decisiones-ext}. El precio que se paga es la
+imposibilidad de manejar colecciones infinitas; el beneficio es un modelo de
+memoria y de ejecución mucho mas simple, compatible con el resto del lenguaje
+(que también es eager).
+
+\subsection{Comparación con Scala}
+
+Scala ofrece la construcción \code{for...yield}, una azucar sintáctica sobre
+\code{flatMap} y \code{map}:
+
+\begin{lstlisting}[language=Scala,style=base,caption={For-comprehension en Scala.}]
+val squares = for (x <- 0 until 5) yield x * x
+val pairs   = for {
+  x <- 1 to 3
+  y <- 1 to x
+} yield (x, y)
+\end{lstlisting}
+
+Scala es \textit{eager} para colecciones concretas como \code{Vector} y
+\textit{lazy} para vistas \code{.view}. La sintaxis es mas verbosa pero soporta
+multiples generadores y guardas. La elección de \hulk{} de exigir un solo
+generador minimiza la complejidad sintáctica al precio de la expresividad.
+
+\subsection{Comparación con C++20 ranges}
+
+C++20 introdujo el sistema de \textbf{ranges y views} con evaluación perezosa y
+composición por \textit{pipe}:
+
+\begin{lstlisting}[language=C++,style=base,caption={Ranges y views en C++20.}]
+auto squares = std::views::iota(0, 5)
+             | std::views::transform([](int x){ return x*x; });
+std::vector<int> v(squares.begin(), squares.end());  // materializa
+\end{lstlisting}
+
+C++ favorece evaluación perezosa con \textit{materialización explicita}, lo que
+permite optimizar la composición de transformaciones evitando allocaciones
+intermedias. Para \hulk{} --- que no posee \textit{iterators} genéricos ni un
+sistema de tipos con \textit{lifetimes} --- esta aproximación seria
+desproporcionadamente compleja.
+
+\subsection{Resumen comparativo}
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de comprehensions/generators entre lenguajes.}
+\label{tab:comp-lang}
+\begin{tabularx}{\textwidth}{lXcXc}
+\toprule
+\textsc{Lenguaje} & \textsc{Sintaxis} & \textsc{Evaluación}
+  & \textsc{Filtros} & \textsc{Tipos} \\
+\midrule
+HULK    & \code{[e | x in it]}            & Ansiosa      & No  & Estático inferido \\
+Python  & \code{[e for x in it if c]}     & Ansiosa/Diferida   & Sí  & Dinámico \\
+Haskell & \code{[e | x <- xs, c]}         & Diferida     & Sí  & Estático inferido \\
+Scala   & \code{for x <- xs yield e}      & Ansiosa/Diferida   & Sí  & Estático inferido \\
+C++20   & \code{xs | transform(f)}        & Diferida     & Sí  & Estático explícito \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Decisiones de diseño de la extensión}
+\label{sec:decisiones-ext}
+
+\subsection{Por que evaluación ansiosa y no perezosa}
+
+Tres argumentos sostienen la decisión de evaluación ansiosa.
+
+\paragraph{Simplicidad del modelo de memoria.}
+Con evaluación ansiosa el tamaño del vector se conoce antes de la asignación,
+por lo que se requiere una sola llamada a \code{malloc} con la capacidad exacta.
+La evaluación perezosa requeriria \textit{thunks} (cierres con estado) o
+continuaciones, estructuras adicionales que duplicarian la complejidad del
+\textit{runtime} sin un beneficio significativo en el caso de uso típico.
+
+\paragraph{Rendimiento predecible.}
+Los compiladores de lenguajes perezosos como GHC para Haskell invierten esfuerzo
+considerable en evitar los \textit{overheads} de la \textit{thunkificación}: el
+análisis de demanda, el análisis de \textit{strictness} y la deforestación son
+optimizaciones complejas dedicadas a este problema. En un compilador con fines
+educativos que ya delega la optimización en \llvm{}, la evaluación ansiosa
+produce IR simple y fácil de optimizar con los \textit{passes} estandar.
+
+\paragraph{Consistencia con el resto del lenguaje.}
+\hulk{} tiene efectos de lado (\code{print}, asignación destructiva). La
+evaluación perezosa en presencia de efectos produce comportamientos sorprendentes
+porque el orden de evaluación deja de coincidir con el orden textual. La
+evaluación ansiosa garantiza que los efectos se producen de izquierda a derecha,
+en consonancia con la semántica del resto de \hulk{}.
+
+\subsection{Por que la barra simple \code{|} como separador}
+
+La barra vertical reproduce la notación matemática $\{f(x) \mid x \in S\}$ y
+coincide con la convención de Haskell \code{[f x | x <- xs]}. El hecho de que
+\code{|} sea también el operador OR lógico introduce un conflicto shift/reduce
+que se resuelve con un \textit{lookahead} adicional. Alternativas consideradas:
+
+\begin{itemize}
+  \item \code{[body for var in iterable]} --- mas familiar para programadores
+    Python, pero introduce el keyword \code{for} en un contexto distinto al de
+    los bucles \code{for}, lo que dificulta el aprendizaje del lenguaje.
+  \item \code{[body : var in iterable]} --- colisiona con la notación de tipo
+    \code{x : T} ya presente en la gramática de \hulk{}.
+  \item \code{[body || var in iterable]} --- evita el conflicto pero rompe la
+    correspondencia con la notación matemática.
+\end{itemize}
+
+\subsection{Por que vectores inmutables (tamaño fijo)}
+
+Los vectores de \hulk{} no tienen operaciones de \code{push} o \code{pop}: una vez
+creados, su tamaño no cambia. Las modificaciones afectan solo a los elementos.
+Esta decisión se justifica por:
+
+\begin{enumerate}
+  \item \textbf{Simplicidad del runtime}: un buffer fijo con cabecera es trivial.
+    Vectores dinámicos requeririan estrategias de redimensión (duplicar
+    capacidad) que duplicarian la complejidad de la biblioteca de soporte.
+  \item \textbf{Semántica de expresión}: en \hulk{} todo es una expresión. Un
+    vector dinámico con mutación es un objeto con estado, lo que rompe la
+    composición funcional que permite escribir
+    \code{print([x*x | x in range(0,5)][3])}.
+  \item \textbf{Caso de uso del lenguaje}: \hulk{} es un lenguaje educativo;
+    sus programas típicos son cortos y operan sobre vectores de tamaño conocido.
+\end{enumerate}
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Cobertura de la especificación}
+\label{cap:cov}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{ste} capítulo cuantifica el grado de
+cobertura del compilador respecto a la especificación oficial del lenguaje
+\hulk{}. La especificación organiza el lenguaje en las secciones A.2 a A.14 de
+su apéndice gramatical: las secciones A.2 a A.8 forman el núcleo del lenguaje,
+mientras que las restantes describen extensiones opcionales que pueden
+incorporarse de manera incremental.
+
+\section{Tabla de cobertura por sección}
+
+\begin{table}[H]
+\centering
+\caption{Cobertura de la especificación oficial de \hulk{} por sección.}
+\label{tab:cobertura}
+\begin{tabularx}{\textwidth}{clcc}
+\toprule
+\textsc{Sec.} & \textsc{Característica} & \textsc{Obl.} & \textsc{Estado} \\
+\midrule
+A.2.1 & Expresiones aritméticas, precedencia & si & \done \\
+A.2.2 & Cadenas, concatenación, escapes      & si & \done \\
+A.2.3 & Funciones matemáticas builtin        & si & \done \\
+A.2.4 & Bloques de expresiones               & si & \done \\
+A.3   & Funciones (inline y completas)       & si & \done \\
+A.4   & Variables y \code{let}-\code{in}     & si & \done \\
+A.4.6 & Asignación destructiva               & si & \done \\
+A.5   & Condicionales \code{if}-\code{elif}-\code{else} & si & \done \\
+A.6.1 & Ciclo \code{while}                   & si & \done \\
+A.6.2 & Ciclo \code{for}                     & si & \done \\
+A.7   & Tipos, herencia, \code{self}, \code{base()} & si & \done \\
+A.8.1 & Anotaciones de tipo                  & si & \done \\
+A.8.2 & Conformidad \code{<=}                & si & \done \\
+A.8.3 & Operador \code{is}                   & si & \done \\
+A.8.4 & Operador \code{as} (downcast)        & si & \done \\
+\midrule
+A.9   & Inferencia de tipos (parcial)        & no & \halfdone \\
+A.10  & Protocolos y conformidad estructural & no & \done \\
+A.11  & Iterables (\code{Iterable}/\code{Range})  & no & \done \\
+A.12  & \textbf{Vectores y generadores (extensión)} & no & \done \\
+A.13  & Funtores y lambdas                   & no & \miss \\
+A.14  & Macros con pattern matching          & no & \miss \\
+\midrule
+\multicolumn{2}{r}{\textsc{Cobertura obligatoria}}  & \multicolumn{2}{c}{\textbf{100\%}} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Ejemplos representativos}
+
+El compilador es capaz de procesar programas como los siguientes, que ejercitan
+multiples características a la vez.
+
+\subsection{Herencia y polimorfismo}
+
+\begin{lstlisting}[style=hulkst, caption={Herencia, polimorfismo y vectores
+  heterogeneos.}]
+type Animal(name: String) {
+    name = name;
+    speak(): String => "...";
+    greet(): String =>
+        "I am " @@ self.name @@ " and I say: " @@ self.speak();
+}
+
+type Dog(name: String) inherits Animal(name) {
+    speak(): String => "Woof!";
+}
+
+type Cat(name: String) inherits Animal(name) {
+    speak(): String => "Meow!";
+}
+
+let zoo = [new Dog("Rex"), new Cat("Whiskers")] in
+for (a in zoo) print(a.greet());
+\end{lstlisting}
+
+\subsection{Protocolos con conformidad estructural}
+
+\begin{lstlisting}[style=hulkst, caption={Protocolos y conformidad implicita.}]
+protocol Printable {
+    to_str(): String;
+}
+
+type Point(x: Number, y: Number) {
+    x = x; y = y;
+    to_str(): String => "(" @ x @ ", " @ y @ ")";
+}
+
+function show(item: Printable) => print(item.to_str());
+show(new Point(3, 4));
+\end{lstlisting}
+
+\subsection{Vectores y generadores}
+
+\begin{lstlisting}[style=hulkst, caption={Calculo de los primeros 10 Fibonacci con
+  generadores.}]
+function fib(n: Number): [Number] =>
+    let result = [0 | i in range(0, n)] in {
+        result[0] := 0; result[1] := 1;
+        for (i in range(2, n)) result[i] := result[i-1] + result[i-2];
+        result
+    };
+
+for (x in fib(10)) print(x);
+\end{lstlisting}
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Decisiones de diseño significativas}
+\label{cap:dec}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{T}{odo} compilador real es una secuencia
+de decisiones de compromiso entre simplicidad de implementación, eficiencia del
+código generado y completitud del lenguaje soportado. Este capítulo documenta
+las decisiones más significativas tomadas durante la construcción del compilador
+y articula explícitamente las alternativas descartadas, los argumentos a favor de
+la opción elegida y los costos asumidos.
+
+\section{LALR(1) artesanal frente a generador externo}
+
+El parser está implementado desde cero ---gramática como estructura de datos,
+tablas LALR(1) construidas programáticamente en tiempo de inicialización--- en
+lugar de generarse a partir de YACC, Bison, LALRPOP o ANTLR.
+
+\begin{description}[style=nextline]
+  \item[Argumento principal]
+    \textit{Transparencia algorítmica.} La construcción del autómata LR(0), el
+    cómputo de FIRST y FOLLOW, la propagación de \textit{lookaheads} y la
+    construcción de las tablas \textsc{Action}/\textsc{Goto} constituyen el núcleo
+    técnico de la teoría de \textit{parsing}~\cite{aho2006,deremer1969}. Una
+    implementación que delegue ese núcleo en una herramienta externa convierte
+    al \textit{parser} en una caja negra, lo que va en contra del principio de
+    diseño D1 enunciado en la introducción.
+  \item[Argumento secundario]
+    \textit{Inspeccionabilidad y depurabilidad.} La gramática es una estructura
+    de datos en memoria que puede imprimirse, recorrerse y analizarse en
+    tiempo de ejecución. Esto resulta determinante a la hora de diagnosticar
+    conflictos \textit{shift}/\textit{reduce}: el conflicto único de la
+    gramática (asociado al separador \code{|} de las expresiones generadoras)
+    pudo identificarse y resolverse inspeccionando la tabla generada, sin
+    necesidad de recompilar el compilador entre iteraciones.
+  \item[Coste]
+    Implementación mas larga (aproximadamente 800 LOC adicionales solo para el
+    modulo LALR) y mayor tiempo de \textit{startup} debido a que las tablas se
+    construyen en cada invocación. Este \textit{overhead} es de pocos
+    milisegundos en programas típicos.
+\end{description}
+
+\section{LLVM como backend vs interprete vs VM propia}
+
+La especificación permite generar código máquina directamente, usar LLVM, o
+implementar una máquina virtual propia.
+
+\begin{description}[style=nextline]
+  \item[Argumento principal]
+    \textit{Calidad del código generado.} \llvm{} produce código comparable al
+    de \code{gcc -O2} para estructuras comunes. Una máquina virtual propia o un
+    interprete serian varios ordenes de magnitud mas lentos para programas con
+    aritmética intensiva.
+  \item[Argumento secundario]
+    \textit{Portabilidad.} El mismo IR de \llvm{} puede compilarse para x86-64,
+    ARM, RISC-V o WebAssembly cambiando un solo parámetro en
+    \code{TargetMachine}.
+  \item[Coste]
+    Curva de aprendizaje de \llvm{} y dependencia de \code{libLLVM-17.so} en el
+    sistema de \textit{build}. El paquete \inkwell{} mitiga la primera dificultad.
+\end{description}
+
+\section{Vtables vs tagged union vs boxed types}
+
+Para implementar el polimorfismo dinámico se evaluaron tres alternativas:
+
+\begin{enumerate}
+  \item \textbf{Tagged union.} Cada objeto es una union discriminada con un tag
+    de tipo. Simple pero ineficiente: el tamaño de cada objeto es el del tipo
+    mayor de la jerarquía.
+  \item \textbf{Boxed types con dispatch dinámico por nombre.} Cada llamada
+    a método consulta una tabla \textit{hash} por nombre del método. Funciona
+    pero introduce \textit{overheads} de \textit{hashing} y posibles colisiones.
+  \item \textbf{Vtables} (\textit{elegida}). Cada objeto tiene un puntero a una
+    tabla de funciones. Es la técnica usada por C++, Java JIT, y Rust (para
+    \textit{trait objects}). El costo por llamada es una carga adicional desde
+    cache; el beneficio es el layout estático y conocido.
+\end{enumerate}
+
+\section{Type tags DFS pre-orden vs class objects}
+
+El test de tipo \code{is} se podria implementar de varias formas:
+
+\begin{enumerate}
+  \item \textbf{Recorrer la cadena de herencia} en \textit{runtime} comparando
+    nombres o punteros a \textit{class objects}. $O(h)$ donde $h$ es la altura
+    de la jerarquía.
+  \item \textbf{Tabla de \textit{class objects}}. Almacenar en cada objeto un
+    puntero a su \textit{class}, y consultar una tabla precomputada de
+    relaciones. $O(1)$ con espacio cuadrático en el número de tipos.
+  \item \textbf{Type tags DFS pre-orden} (\textit{elegida}). $O(1)$ en tiempo,
+    $O(N)$ en espacio.
+\end{enumerate}
+
+La elección DFS pre-orden es la combinación óptima tiempo-espacio para el caso
+común.
+
+\section{Enlace dinámico vs estático de \llvm{}}
+
+El compilador enlaza dinámicamente con \code{libLLVM-17.so}. La alternativa
+(enlace estático) produciría ejecutables de 50--200~MB. El enlace dinámico
+mantiene el binario en pocos megabytes y comparte la biblioteca con otras
+herramientas del sistema.
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Evaluación y pruebas}
+\label{cap:ev}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{L}{a} validación del compilador se
+realiza mediante una bateria de pruebas automatizadas que cubren todas las fases
+y todas las construcciones del lenguaje. Esta sección describe la estructura de
+las pruebas y los resultados obtenidos.
+
+\section{Estructura de la suite de pruebas}
+
+\begin{table}[H]
+\centering
+\caption{Distribución de las pruebas automatizadas por modulo.}
+\label{tab:pruebas}
+\begin{tabularx}{\textwidth}{lrX}
+\toprule
+\textsc{Modulo} & \textsc{Tests} & \textsc{Cobertura} \\
+\midrule
+Lexer      & 87  & Todos los tipos de token, edge cases, escapes \\
+Parser     & 112 & Todos los no-terminales, precedencia, asociatividad \\
+Semántico  & 98  & Inferencia, protocolos, errores de tipo \\
+Codegen    & 87  & Aritmética, flujo, OOP, vectores, rangos, builtins \\
+\midrule
+\textbf{Total} & \textbf{384} & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Programas de prueba completos}
+
+Mas alla de las pruebas unitarias, el repositorio incluye 22 programas
+\hulk{} completos en \code{tests/hulk/}, organizados por categoría:
+
+\begin{itemize}
+  \item \code{ok/minimal/}: 9 programas (aritmética, condicionales, funciones,
+    hola mundo, \code{let}-\code{in}, cadenas, ciclos).
+  \item \code{ok/oop/}: 3 programas (clase básica, herencia, mutación).
+  \item \code{ok/types/}: 3 programas (anotaciones, builtins, inferencia).
+  \item \code{ok/extras/}: 2 programas (for, range).
+  \item \code{errors/}: 5 programas que deben fallar con un mensaje específico.
+\end{itemize}
+
+Cada programa se compila y ejecuta, comparando la salida estandar contra una
+salida esperada. Los programas de error verifican adicionalmente que el código
+de salida sea distinto de cero y que el mensaje siga el formato del contrato de
+interfaz.
+
+\section{Contrato de errores}
+
+El compilador respeta el contrato de interfaz asociado al lenguaje: los errores
+se reportan por \code{stderr} con el prefijo \code{!\ } y el formato
+\code{(línea,col) FASE: mensaje}; el proceso termina con código de salida $\neq 0$.
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Limitaciones conocidas y trabajo futuro}
+\label{cap:lim}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{N}{ingun} compilador es completo. Este
+capitulo documenta las limitaciones identificadas en la implementación actual y
+las direcciones de trabajo futuro consideradas.
+
+\section{Limitaciones actuales}
+
+\paragraph{Funciones anónimas (lambdas).}
+La especificación (sección~A.13) describe lambdas como funciones de primera
+clase. La implementación actual solo soporta funciones con nombre. La adición de
+lambdas requeriría \textit{closures} con captura del entorno léxico, lo que
+implica un cambio en la representación de los valores funcionales: cada lambda
+debería representarse como un par
+\code{(puntero\ a\ función,\ puntero\ a\ entorno\ capturado)}, con la
+correspondiente gestión de tiempo de vida sobre el entorno. La adición es
+mecánica pero no trivial: el código actual del codegen y el del semántico están
+construidos bajo el supuesto de que toda función es global, y ese supuesto
+permea muchas estructuras de datos.
+
+\paragraph{Procesamiento de secuencias de escape.}
+Como se anticipó en el análisis léxico, las secuencias \code{\textbackslash n},
+\code{\textbackslash t}, \code{\textbackslash"} y \code{\textbackslash\textbackslash}
+no se descodifican y aparecen literalmente en la salida. La implementación es
+breve (un bucle sobre los caracteres del lexema), pero requiere decidir
+cuidadosamente dónde se realiza la descodificación: hacerlo en el \textit{lexer}
+desincroniza la posición del lexema con la del fuente original, lo que dañaría la
+calidad de los mensajes de error; hacerlo en la fase semántica preserva la
+posición pero implica recorrer el lexema dos veces (una para descodificar, otra
+para construir el literal). Esta es una de las tareas pendientes de menor
+complejidad y mayor visibilidad para el usuario.
+
+\paragraph{Gestión de memoria.}
+El compilador adopta una estrategia de \textit{solo-asignación}: las cadenas y
+los objetos se asignan en \textit{heap} con \code{malloc} y nunca se liberan.
+Para programas con muchas operaciones de concatenación o asignación de objetos,
+esto produce un crecimiento monótono del consumo de memoria. Una mejora futura
+podría ser un \textit{arena allocator} de \textit{regiones} ligado al
+\code{let}-\code{in} ---libera todas las cadenas creadas dentro de un \code{let}
+al salir de él---, o un sistema de \textit{reference counting} con
+detección de ciclos similar al de Python.
+
+\paragraph{Recuperación de errores en el parser.}
+El parser se detiene en el primer error sintáctico. Un parser con recuperación
+podría reiniciar en el siguiente punto de sincronización (\code{;} o \code{\}}) y
+reportar todos los errores en una sola pasada. La técnica clásica de Burke y
+Fisher~\cite{cooper2011} es directamente aplicable a la tabla generada por el
+constructor LALR(1) sin necesidad de regenerar la gramática.
+
+\paragraph{Spans en errores de codegen.}
+Los errores internos del generador de código no incluyen la posición en el
+fuente. Las fases anteriores propagan \code{Span} en todos los nodos del AST;
+propagarlos hasta el codegen mejoraría la experiencia de diagnóstico en caso de
+errores internos del compilador.
+
+\paragraph{Vectores sin mutación estructural.}
+Los vectores son de tamaño fijo: una vez creados, no admiten \code{push} ni
+\code{pop}. Agregar mutación estructural requeriría sustituir el layout actual
+(un puntero al buffer con cabecera de tamaño) por una estructura de
+\textit{capacity-and-length} similar al \code{Vec<T>} de \rust{}, con una
+estrategia de redimensión exponencial para amortizar el coste.
+
+\section{Trabajo futuro}
+
+\begin{itemize}
+  \item \textbf{Closures y lambdas}: representar funciones de primera clase con
+    un par (\textit{puntero a función}, \textit{puntero a entorno}).
+  \item \textbf{Generadores perezosos}: variantes lazy de las expresiones
+    generadoras para permitir colecciones conceptualmente infinitas.
+  \item \textbf{Inferencia Hindley-Milner completa}: el sistema actual infiere
+    tipos a traves de expresiones simples pero no resuelve constraints
+    polimorficos complejos. H-M permitiria funciones genéricas como
+    \code{function map(v: [A], f: A -> B): [B]}.
+  \item \textbf{Optimizaciones específicas de HULK}: \textit{inlining} de
+    métodos monomorficos, análisis de escape para objetos de corta vida
+    (sustituyendo \textit{heap} por \textit{stack}).
+  \item \textbf{Backend WebAssembly}: cambiar el \code{TargetMachine} de
+    \llvm{} para emitir WebAssembly permitiria ejecutar programas \hulk{} en el
+    navegador.
+\end{itemize}
+
+% ════════════════════════════════════════════════════════════════════════════
+\chapter{Conclusiones}
+\label{cap:concl}
+% ════════════════════════════════════════════════════════════════════════════
+
+\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{l} compilador descrito en este reporte
+implementa el lenguaje \hulk{} de extremo a extremo: a partir de un fichero
+fuente \texttt{.hulk}, produce un binario ELF~x86-64 que el sistema operativo
+carga y ejecuta sin más dependencias que \code{libc}, \code{libm} y la
+biblioteca de \textit{runtime} aportada por la propia distribución. Las
+características nucleares del lenguaje ---expresiones aritméticas y de cadena,
+control de flujo expresivo, funciones de primer orden, tipos con herencia
+simple, protocolos con conformidad estructural variante y operadores
+\code{is}/\code{as} de prueba y conversión de tipos--- quedan implementadas en
+su totalidad, junto al sistema de iterables y la extensión propia de vectores
+con expresiones generadoras desarrollada en el \cref{cap:ext}.
+
+Tres decisiones técnicas estructuran la implementación. La primera ---construir
+el \textit{frontend} a mano en lugar de generarlo a partir de una herramienta
+externa--- privilegia la transparencia del autómata LALR(1) y permite resolver
+en el constructor de la tabla un conflicto deliberado que ninguna herramienta
+genérica acomoda con elegancia (el separador \code{|} de las expresiones
+generadoras, idéntico al operador OR lógico). La segunda ---asignar etiquetas
+de tipo en orden DFS pre-orden sobre la jerarquía de herencia--- reduce el
+operador \code{is} a una comparación entera de dos cláusulas, una mejora que
+sitúa el coste del despacho de tipos por debajo del de cualquier comprobación
+implementada como recorrido de tabla. La tercera ---resolver el despacho a
+través de protocolos mediante un \textit{switch} sobre el \code{type\_tag}, con
+ramas terminadas en llamadas estáticas--- contrasta con el mecanismo habitual
+en C++ y Rust (tablas adicionales por interfaz) y aprovecha el hecho de que el
+verificador semántico conoce en tiempo de compilación el conjunto completo de
+tipos conformes a cada protocolo invocado.
+
+La extensión de vectores con expresiones generadoras sitúa a \hulk{} en la
+familia de lenguajes que ofrecen soporte de primera clase para transformaciones
+declarativas de colecciones, junto a Python, Haskell, Scala y, más
+recientemente, C++20. Las diferencias respecto a esos cuatro lenguajes ---y
+documentadas con detalle en la \cref{tab:comp-lang}--- no son tanto de
+expresividad como de \emph{integración}: la extensión convive con el sistema
+de tipos estático del lenguaje, con los protocolos estructurales y con la
+jerarquía de objetos sin introducir un subsistema paralelo. El precio asumido
+ha sido renunciar a filtros, a generadores múltiples y a evaluación perezosa;
+el beneficio, un \textit{runtime} de pocos cientos de bytes y un IR \llvm{}
+que el \textit{pass manager} optimiza con la misma eficacia que un bucle
+aritmético equivalente escrito a mano. Cada uno de esos compromisos está
+justificado por separado en la \cref{sec:decisiones-ext}.
+
+\vspace{1em}
+Las direcciones de trabajo enumeradas en el \cref{cap:lim} delimitan las
+extensiones naturales del compilador en su estado actual: la introducción de
+funciones de primera clase con cierres léxicos, el procesamiento de las
+secuencias de escape en literales de cadena, la recuperación de errores
+sintácticos para reportar múltiples errores en una sola compilación, y la
+sustitución del esquema actual de asignación monotónica por un
+\textit{allocator} basado en regiones ligadas al ámbito de las expresiones
+\code{let}. Ninguna de ellas es conceptualmente difícil; cada una representa
+una ampliación localizada del compilador construido.
+
+% ════════════════════════════════════════════════════════════════════════════
+\begin{thebibliography}{99}
+\addcontentsline{toc}{chapter}{Bibliografía}
+% ════════════════════════════════════════════════════════════════════════════
+
+\bibitem{aho2006}
+A.~V. Aho, M.~S. Lam, R.~Sethi, J.~D. Ullman.
+\textit{Compilers: Principles, Techniques, and Tools} (2nd ed.).
+Addison-Wesley, 2006.
+
+\bibitem{thompson1968}
+K.~L. Thompson.
+``Programming Techniques: Regular Expression Search Algorithm.''
+\textit{Communications of the ACM}, 11(6):419--422, 1968.
+
+\bibitem{deremer1969}
+F.~L. DeRemer.
+\textit{Practical Translators for LR(k) Languages}.
+PhD thesis, MIT, 1969.
+
+\bibitem{lattner2004}
+C.~Lattner, V.~Adve.
+``LLVM: A Compilation Framework for Lifelong Program Analysis and Transformation.''
+\textit{Proceedings of the International Symposium on Code Generation and
+Optimization}, 2004.
+
+\bibitem{bjarne1994}
+B.~Stroustrup.
+\textit{The Design and Evolution of C++}.
+Addison-Wesley, 1994.
+
+\bibitem{pierce2002}
+B.~C. Pierce.
+\textit{Types and Programming Languages}.
+MIT Press, 2002.
+
+\bibitem{peytonjones2003}
+S.~Peyton Jones (ed.).
+\textit{Haskell 98 Language and Libraries: The Revised Report}.
+Cambridge University Press, 2003.
+
+\bibitem{odersky2008}
+M.~Odersky, L.~Spoon, B.~Venners.
+\textit{Programming in Scala}.
+Artima Press, 2008.
+
+\bibitem{klabnik2019}
+S.~Klabnik, C.~Nichols.
+\textit{The Rust Programming Language}.
+No Starch Press, 2019.
+
+\bibitem{inkwell}
+inkwell: Safe Rust bindings for LLVM.
+\url{https://github.com/TheDan64/inkwell}.
+
+\bibitem{bringhurst2004}
+R.~Bringhurst.
+\textit{The Elements of Typographic Style} (3rd ed.).
+Hartley \& Marks, 2004.
+
+\bibitem{miede2011}
+A.~Miede.
+\textit{A Classic Thesis Style: An Homage to The Elements of Typographic Style}.
+LaTeX template, 2011.
+
+\bibitem{appel1998}
+A.~W. Appel.
+\textit{Modern Compiler Implementation in ML}.
+Cambridge University Press, 1998.
+
+\bibitem{cooper2011}
+K.~D. Cooper, L.~Torczon.
+\textit{Engineering a Compiler} (2nd ed.).
+Morgan Kaufmann, 2011.
+
+\bibitem{hoare1985}
+C.~A.~R. Hoare.
+\textit{Communicating Sequential Processes}.
+Prentice Hall International, 1985.
+
+\bibitem{nystrom2021}
+R.~Nystrom.
+\textit{Crafting Interpreters}.
+Genever Benning, 2021.
+\url{https://craftinginterpreters.com/}
+
+\bibitem{wadler1990}
+P.~Wadler.
+``Comprehending Monads''.
+\textit{Proceedings of the 1990 ACM Conference on LISP and Functional
+Programming}, pp.~61--78, 1990.
+
+\bibitem{wirth1971}
+N.~Wirth.
+``The Design of a Pascal Compiler''.
+\textit{Software: Practice and Experience}, 1(4):309--333, 1971.
+
+\end{thebibliography}
+
+\end{document}
