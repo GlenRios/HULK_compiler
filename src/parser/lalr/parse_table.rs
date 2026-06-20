@@ -12,7 +12,7 @@ use crate::parser::grammar::symbol::{NonTerminal, Terminal};
 //  Action — las cuatro posibles acciones del parser LR
 // ─────────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
     /// Desplazar: consumir el token actual y pasar al estado `s`.
     Shift(usize),
@@ -30,7 +30,7 @@ pub enum Action {
 //  ConflictKind — tipo de conflicto detectado al construir la tabla
 // ─────────────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ConflictKind {
     /// Dos acciones distintas para el mismo (estado, terminal).
     ShiftReduce { state: usize, terminal: Terminal, shift_to: usize, reduce_prod: usize },
@@ -41,6 +41,7 @@ pub enum ConflictKind {
 //  ParseTable — las tablas finales
 // ─────────────────────────────────────────────────────────────────────────────
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ParseTable {
     /// ACTION[estado][terminal] → acción
     pub action: HashMap<(usize, Terminal), Action>,

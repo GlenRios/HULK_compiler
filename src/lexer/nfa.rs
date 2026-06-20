@@ -2,7 +2,7 @@ use std::collections::{HashMap};
 
 pub type StateId = usize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Transition {
     Epsilon,
     Char(char),

@@ -6,7 +6,7 @@ use crate::lexer::thompson::ThompsonBuilder;
 use crate::lexer::token::TokenType;
 use crate::lexer::token_definition::TokenDefinition;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct MasterNFA {
     pub start: StateId,
     pub transitions: HashMap<StateId, Vec<(Transition, StateId)>>,

@@ -17,6 +17,7 @@ use crate::lexer::token::Token;
 //  ParserDriver
 // ─────────────────────────────────────────────────────────────────────────────
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ParserDriver {
     grammar: crate::parser::grammar::Grammar,
     table:   crate::parser::lalr::ParseTable,
@@ -24,14 +25,23 @@ pub struct ParserDriver {
 
 impl ParserDriver {
     /// Construye la gramática y la tabla LALR(1).
-    /// Llamar una sola vez al arrancar el compilador — es O(n²).
     pub fn new() -> Self {
         let grammar = hulk_grammar::build();
         let table   = TableBuilder::new(&grammar).build();
-        // Los conflictos se pueden consultar con has_conflicts() si se necesita,
-        // pero NO se imprimen automáticamente para no contaminar stdout/stderr
-        // durante los tests.
         Self { grammar, table }
+    }
+
+    pub fn load_or_build(cache_path: &std::path::Path) -> Self {
+        if let Ok(bytes) = std::fs::read(cache_path) {
+            if let Ok(driver) = bincode::deserialize(&bytes) {
+                return driver;
+            }
+        }
+        let driver = Self::new();
+        if let Ok(bytes) = bincode::serialize(&driver) {
+            let _ = std::fs::write(cache_path, bytes);
+        }
+        driver
     }
 
     /// Parsea un iterador de tokens y devuelve el AST o un error.

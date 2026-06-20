@@ -6,7 +6,7 @@ use std::fmt;
 //  del lexer. Usamos nuestro propio enum para no
 //  acoplar el parser directamente al crate lexer.
 // ─────────────────────────────────────────────
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Terminal {
     // Literales
     Number,
@@ -93,7 +93,7 @@ pub enum Terminal {
 //  Todos los símbolos no-terminales de la gramática
 //  HULK. Se agrupan por área semántica.
 // ─────────────────────────────────────────────
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum NonTerminal {
     // Raíz
     Program,
@@ -177,7 +177,7 @@ pub enum NonTerminal {
 //  Es lo que se pone en el lado derecho de
 //  una producción o en los stacks del parser.
 // ─────────────────────────────────────────────
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Symbol {
     T(Terminal),
     NT(NonTerminal),

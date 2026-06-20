@@ -17,6 +17,32 @@ use parser::engine::{ParseError, ParserDriver};
 use parser::engine::error::ParseErrorKind;
 use semantic::SemanticError;
 
+fn cache_dir() -> PathBuf {
+    let dir = if let Ok(exe) = std::env::current_exe() {
+        exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf()
+    } else {
+        PathBuf::from(".")
+    };
+    let cache = dir.join(".hulk_cache");
+    let _ = std::fs::create_dir_all(&cache);
+    cache
+}
+
+fn load_or_build_nfa(cache_path: &std::path::Path) -> MasterNFA {
+    if let Ok(bytes) = std::fs::read(cache_path) {
+        if let Ok(nfa) = bincode::deserialize(&bytes) {
+            return nfa;
+        }
+    }
+    let nfa = MasterNFA::from_token_definitions(
+        &TokenDefinition::default_token_definitions(),
+    );
+    if let Ok(bytes) = bincode::serialize(&nfa) {
+        let _ = std::fs::write(cache_path, bytes);
+    }
+    nfa
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
@@ -32,10 +58,10 @@ fn main() {
         }
     };
 
+    let cache = cache_dir();
+
     // ── 1. Análisis léxico ────────────────────────────────────────────────────
-    let master = MasterNFA::from_token_definitions(
-        &TokenDefinition::default_token_definitions(),
-    );
+    let master = load_or_build_nfa(&cache.join("nfa.bin"));
     let mut lex    = Lexer::new(&source, master);
     let all_tokens = lex.tokenize();
 
@@ -55,7 +81,7 @@ fn main() {
     }
 
     // ── 2. Análisis sintáctico ────────────────────────────────────────────────
-    let driver  = ParserDriver::new();
+    let driver  = ParserDriver::load_or_build(&cache.join("parser.bin"));
     let program = match driver.parse(all_tokens.into_iter()) {
         Ok(p)  => p,
         Err(e) => {

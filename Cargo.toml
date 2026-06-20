@@ -7,3 +7,5 @@ edition = "2024"
 inkwell = { version = "0.4", features = ["llvm17-0"] }
 llvm-sys = { version = "170", features = ["force-dynamic"] }
 thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+bincode = "1"

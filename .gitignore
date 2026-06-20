@@ -16,3 +16,4 @@ Cargo.lock
 /notes/hulk_runtime.a
 /output
 output.exe
+.hulk_cache/

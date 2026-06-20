@@ -9,7 +9,7 @@ use crate::parser::grammar::symbol::{NonTerminal, Symbol};
 //  Cada producción tiene un id único que se
 //  usa en las celdas REDUCE de la tabla LALR.
 // ─────────────────────────────────────────────
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Production {
     /// Índice único asignado al registrar la producción en la gramática.
     pub id: usize,

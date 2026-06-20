@@ -14,7 +14,7 @@ use production::Production;
 //  compilador y se pasa (por referencia) al
 //  builder de la tabla LALR y al parser.
 // ─────────────────────────────────────────────
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Grammar {
     /// Todas las producciones, indexadas por su id.
     pub productions: Vec<Production>,
