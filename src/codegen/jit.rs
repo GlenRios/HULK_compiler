@@ -22,7 +22,7 @@ use super::visitor::ProgramVisitor;
 // ── Optimización compartida ───────────────────────────────────────────────────
 
 const OPT_PASSES: &str =
-    "mem2reg,instcombine<no-verify-fixpoint>,reassociate,simplifycfg";
+    "mem2reg,instcombine,reassociate,simplifycfg";
 
 fn run_opt(module: &inkwell::module::Module<'_>, machine: &TargetMachine) -> CodegenResult<()> {
     module
