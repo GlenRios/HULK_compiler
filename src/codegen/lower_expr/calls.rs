@@ -14,7 +14,16 @@ impl<'ctx> CodegenContext<'ctx> {
         call: &CallExpr,
     ) -> CodegenResult<CgValue<'ctx>> {
         // ── base(args) — llamada directa al método del padre ──────────────────
-        if let ExprKind::Base = &call.callee.kind {
+        // "base" es soft keyword (igual que en el semántico, type_checker.rs
+        // check_call): se dispara solo si el callee es el identificador
+        // literal "base" Y no hay ninguna variable/parámetro local llamado
+        // "base" en el scope actual de codegen. Antes este bloque disparaba
+        // con `ExprKind::Base`, un nodo de AST dedicado que dejó de
+        // construirse cuando "base" pasó a lexearse como IDENTIFIER normal
+        // — quedó código muerto hasta este fix.
+        let is_base_call = matches!(&call.callee.kind, ExprKind::Identifier { name } if name == "base")
+            && self.symbols.get("base").is_none();
+        if is_base_call {
             let method_name = self.current_method_name.clone()
                 .ok_or_else(|| CodegenError::Unsupported(
                     "base() fuera de contexto de método".into()))?;
@@ -202,12 +211,30 @@ impl<'ctx> CodegenContext<'ctx> {
     ) -> CodegenResult<CgValue<'ctx>> {
         let obj_val = self.visit_expr(&mc.object)?;
         let obj_ptr = match obj_val {
-            CgValue::Object(p) => p,
+            CgValue::Object(p) | CgValue::Vector(p) => p,
             _ => return Err(CodegenError::Unsupported(
                 format!("método '{}': el receptor no es un objeto", mc.method))),
         };
 
         match self.get_expr_type(&mc.object)? {
+            // ── Vector.size() ─────────────────────────────────────────────────
+            HulkType::Vector(_) => {
+                if mc.method == "size" {
+                    let size_fn = self.require_fn("hulk_vec_size")?;
+                    let size_f64 = self.builder
+                        .build_call(size_fn, &[obj_ptr.into()], "vsize")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                        .try_as_basic_value().left()
+                        .ok_or_else(|| CodegenError::Unsupported(
+                            "hulk_vec_size sin retorno".into()))?
+                        .into_float_value();
+                    Ok(CgValue::Number(size_f64))
+                } else {
+                    Err(CodegenError::Unsupported(
+                        format!("método '{}': no soportado en Vector", mc.method)))
+                }
+            }
+
             HulkType::UserDefined(type_name) => {
                 let (fn_ptr, fn_type, sig) =
                     self.method_dispatch(obj_ptr, &type_name, &mc.method)?;

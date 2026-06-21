@@ -8,7 +8,8 @@ use crate::semantic::HulkType;
 
 use super::super::context::CodegenContext;
 use super::super::error::{CodegenError, CodegenResult};
-use super::super::value::CgValue;
+use super::super::symbols::Place;
+use super::super::value::{CgValue, ELEM_SIZE_BYTES};
 use super::super::visitor::ExprVisitor;
 
 impl<'ctx> CodegenContext<'ctx> {
@@ -266,6 +267,32 @@ impl<'ctx> CodegenContext<'ctx> {
                     unreachable!("lvalue Access: tipo no es UserDefined")
                 };
                 self.field_place(obj_ptr, &type_name, &ae.field)?
+            }
+            // a[i] := valor
+            ExprKind::Index(ie) => {
+                let coll_val = self.visit_expr(&ie.collection)?;
+                let CgValue::Vector(vec_ptr) = coll_val else {
+                    return Err(CodegenError::Unsupported(
+                        "asignación indexada: la colección no es un Vector".into()));
+                };
+                let idx_val = self.visit_expr(&ie.index)?;
+                let idx_f64 = self.require_number(idx_val)?;
+                let i32_ty  = self.context.i32_type();
+                let idx_i32 = self.builder
+                    .build_float_to_signed_int(idx_f64, i32_ty, "aidx_i32")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                let get_fn   = self.require_fn("hulk_vec_get")?;
+                let elem_ptr = self.builder
+                    .build_call(get_fn,
+                        &[vec_ptr.into(), idx_i32.into(),
+                          i32_ty.const_int(ELEM_SIZE_BYTES, false).into()], "aep")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .try_as_basic_value().left()
+                    .ok_or_else(|| CodegenError::Unsupported(
+                        "hulk_vec_get (assign) sin retorno".into()))?
+                    .into_pointer_value();
+                let elem_ty = self.get_expr_type(&assign.target)?;
+                Place { ptr: elem_ptr, hulk_ty: elem_ty }
             }
             _ => return Err(CodegenError::InvalidLValue),
         };

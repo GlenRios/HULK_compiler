@@ -213,6 +213,10 @@ pub fn build() -> Grammar {
     g.add(p(TypeName, vec![t(Identifier), t(LBracket), t(RBracket)]));
     g.add(p(TypeName, vec![t(Identifier), t(Multiply)]));
 
+    g.add(p(TypeName, vec![
+        t(Identifier), t(LBracket), t(RBracket), t(LBracket), t(RBracket),
+    ]));
+
     // ═══════════════════════════════════════════════════════════════════
     //  9.  Argumentos de llamada
     // ═══════════════════════════════════════════════════════════════════
@@ -435,24 +439,16 @@ pub fn build() -> Grammar {
         t(New), nt(TypeName), t(LParen), nt(ArgList), t(RParen),
     ]));
 
-    // ═══════════════════════════════════════════════════════════════════
-    //  12. Vectores
-    //
-    //  Forma explícita:   [ e1, e2, e3 ]
-    //  Forma vacía:       [ ]
-    //  Forma generadora:  [ expr | id in expr ]
-    //
-    //  ⚠ CONFLICTO CONOCIDO:
-    //  La forma generadora usa `|` como separador, el mismo token que el
-    //  operador lógico OR en OrExpr.  Dentro de `[Expr | ...]` el parser
-    //  LALR(1) tiene un shift/reduce conflict en el token `|`:
-    //    – shift `|` como separador del generador
-    //    – shift `|` para continuar construyendo OrExpr → OrExpr | AndExpr
-    //  Se resuelve en `table_builder.rs` con una regla de desambiguación:
-    //  cuando el stack tiene `[ Expr` y el lookahead es `|` seguido de
-    //  `IDENTIFIER in`, se elige la producción generadora.
-    //  Si el lookahead es `|` sin ese patrón, se sigue construyendo OrExpr.
-    // ═══════════════════════════════════════════════════════════════════
+    g.add(p(NewExpr, vec![
+        t(New), t(Identifier), t(LBracket), nt(Expr), t(RBracket),
+    ]));
+    g.add(p(NewExpr, vec![
+        t(New), t(Identifier), t(LBracket), nt(Expr), t(RBracket),
+        t(LBrace), t(Identifier), t(RtArrow), nt(Expr), t(RBrace),
+    ]));
+    g.add(p(NewExpr, vec![
+        t(New), t(Identifier), t(LBracket), t(RBracket), t(LBracket), nt(Expr), t(RBracket),
+    ]));
 
     // VectorLiteral → [ ]
     g.add(p(VectorLiteral, vec![t(LBracket), t(RBracket)]));
@@ -467,6 +463,11 @@ pub fn build() -> Grammar {
         t(LBracket),
         nt(Expr), t(Or), t(Identifier), t(In), nt(Expr),
         t(RBracket),
+    ]));
+
+    // VectorLiteral → { Expr , ArgListNonEmpty }   (alias de llaves)
+    g.add(p(VectorLiteral, vec![
+        t(LBrace), nt(Expr), t(Comma), nt(ArgListNonEmpty), t(RBrace),
     ]));
 
     g
@@ -541,5 +542,13 @@ mod tests {
         let g = grammar();
         println!("Total de producciones: {}", g.len());
         g.dump();
+    }
+    #[test]
+    fn print_grammar_table_has_no_conflicts() {
+        use crate::parser::lalr::TableBuilder;
+        let g = grammar();
+        let table = TableBuilder::new(&g).build();
+        table.dump_conflicts();
+        assert!(!table.has_conflicts(), "la gramática de HULK tiene conflictos LALR(1) — ver arriba");
     }
 }

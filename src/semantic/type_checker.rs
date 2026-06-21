@@ -1022,6 +1022,19 @@ impl TypeChecker {
                 for arg in &m.args { self.check_expr(arg); }
                 return HulkType::Object;
             }
+            // ── Vector.size() ─────────────────────────────────────────────────
+            HulkType::Vector(_) => {
+                if m.method == "size" {
+                    self.check_call_args("size", &[], &m.args, m.span);
+                    return HulkType::Number;
+                }
+                self.errors.push(SemanticError::MethodNotFound {
+                    type_name: obj_ty.name(),
+                    method:    m.method.clone(),
+                    span:      m.span,
+                });
+                return HulkType::Never;
+            }
             _ => {
                 self.errors.push(SemanticError::MethodNotFound {
                     type_name: obj_ty.name(),
@@ -1377,6 +1390,33 @@ impl TypeChecker {
 
                 HulkType::Vector(Box::new(body_ty))
             }
+
+            // ── new Type[N] / new Type[N]{ id -> expr } ────────────────────────
+            VectorExpr::Alloc { elem_type, size, generator, .. } => {
+                let size_ty = self.check_expr(size);
+                if !size_ty.is_never() && !matches!(size_ty, HulkType::Number) {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: "Number".into(),
+                        found:    size_ty.name(),
+                        span:     size.span,
+                    });
+                }
+
+                let elem_ty = self.resolve_type_name(elem_type);
+
+                if let Some((var, body)) = generator {
+                    self.symbols.push_scope();
+                    self.symbols.define(var, Symbol::variable(var, HulkType::Number, false));
+                    let body_ty = self.check_expr(body);
+                    self.symbols.pop_scope();
+
+                    if !body_ty.is_never() && !self.types.conforms(&body_ty, &elem_ty) {
+                        self.emit_type_or_protocol_error(&body_ty, &elem_ty, body.span);
+                    }
+                }
+
+                HulkType::Vector(Box::new(elem_ty))
+            }
         }
     }
 
@@ -1389,6 +1429,9 @@ impl TypeChecker {
             TypeName::Simple { name, .. } => self.name_to_hulk_type(name),
             TypeName::Vector { name, .. } => {
                 HulkType::Vector(Box::new(self.name_to_hulk_type(name)))
+            }
+            TypeName::Vector2D { name, .. } => {
+                HulkType::Vector(Box::new(HulkType::Vector(Box::new(self.name_to_hulk_type(name)))))
             }
             TypeName::Iterable { .. } => HulkType::Protocol("Iterable".into()),
         }

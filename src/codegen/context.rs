@@ -167,6 +167,13 @@ impl<'ctx> CodegenContext<'ctx> {
                     .into_pointer_value();
                 Ok(CgValue::Str(v))
             }
+            HulkType::Vector(_) => {
+                let v = self.builder
+                    .build_load(self.ptr_type(), place.ptr, name)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .into_pointer_value();
+                Ok(CgValue::Vector(v))
+            }
             HulkType::Null => Ok(CgValue::Null),
             _ => {
                 let v = self.builder

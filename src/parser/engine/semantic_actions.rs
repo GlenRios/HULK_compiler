@@ -388,17 +388,17 @@ pub fn reduce(
         }
 
         // ── TypeName ──────────────────────────────────────────────────────
-        // IDENTIFIER           (len 1)  → Simple   (terminal, NO passthrough)
-        // IDENTIFIER [ ]       (len 3)  → Vector
-        // IDENTIFIER *         (len 2)  → Iterable
+        // IDENTIFIER                  (len 1)  → Simple   (terminal, NO passthrough)
+        // IDENTIFIER [ ]              (len 3)  → Vector
+        // IDENTIFIER *                (len 2)  → Iterable
+        // IDENTIFIER [ ] [ ]          (len 5)  → Vector2D (no oficial, ver gramática)
         NT::TypeName => {
             let (name, s) = a!(0).into_lexeme()?;
-            let tn = if plen(prod) == 1 {
-                TypeName::simple(name, s)
-            } else if plen(prod) == 3 {
-                TypeName::vector(name, s)
-            } else {
-                TypeName::iterable(name, s)
+            let tn = match plen(prod) {
+                1 => TypeName::simple(name, s),
+                3 => TypeName::vector(name, s),
+                5 => TypeName::vector2d(name, s),
+                _ => TypeName::iterable(name, s),
             };
             StackValue::TypeNameVal(tn)
         }
@@ -693,11 +693,49 @@ pub fn reduce(
         }
 
         // ── NewExpr ───────────────────────────────────────────────────────
-        // new TypeName ( ArgList )   (len 5)
+        // new TypeName ( ArgList )                                  (len 5, [2]=LParen)
+        // new Identifier [ Expr ]                                   (len 5, [2]=LBracket) —
+        // new Identifier [ Expr ] { Identifier -> Expr }            (len 10)              —
+        // new Identifier [ ] [ Expr ]                               (len 7)               — 
         NT::NewExpr => {
-            let type_name = a!(1).into_type_name()?;
-            let new_args  = a!(3).into_expr_list()?;
-            StackValue::Expr(Expr::new(ExprKind::New(Box::new(NewExpr::new(type_name, new_args, span))), span))
+            match (plen(prod), prod.body.get(2)) {
+                (5, Some(Symbol::T(Tok::LParen))) => {
+                    let type_name = a!(1).into_type_name()?;
+                    let new_args  = a!(3).into_expr_list()?;
+                    StackValue::Expr(Expr::new(ExprKind::New(Box::new(NewExpr::new(type_name, new_args, span))), span))
+                }
+                (5, Some(Symbol::T(Tok::LBracket))) => {
+                    // new Identifier [ Expr ]  → vector 1D, sin generador
+                    let (name, _) = a!(1).into_lexeme()?;
+                    let size      = a!(3).into_expr()?;
+                    let elem_type = TypeName::simple(name, span);
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(
+                        VectorExpr::alloc(elem_type, size, None, span)
+                    )), span))
+                }
+                (10, _) => {
+                    // new Identifier [ Expr ] { Identifier -> Expr }  → vector 1D, con generador por índice
+                    let (name, _) = a!(1).into_lexeme()?;
+                    let size      = a!(3).into_expr()?;
+                    let (var, _)  = a!(6).into_lexeme()?;
+                    let body      = a!(8).into_expr()?;
+                    let elem_type = TypeName::simple(name, span);
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(
+                        VectorExpr::alloc(elem_type, size, Some((var, body)), span)
+                    )), span))
+                }
+                (7, _) => {
+                    // new Identifier [ ] [ Expr ]  → vector 2D (vector de Identifier[]), sin generador
+                    let (name, _) = a!(1).into_lexeme()?;
+                    let size      = a!(5).into_expr()?;
+                    let elem_type = TypeName::vector(name, span);
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(
+                        VectorExpr::alloc(elem_type, size, None, span)
+                    )), span))
+                }
+                _ => return Err(ParseError::internal(
+                    format!("NewExpr desconocido: len={}", plen(prod)), span)),
+            }
         }
 
         // ── VectorLiteral ─────────────────────────────────────────────────
@@ -719,6 +757,16 @@ pub fn reduce(
                     let iterable = a!(5).into_expr()?;
                     StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(
                         VectorExpr::generator(body, var, iterable, span)
+                    )), span))
+                }
+                5 => {
+                    // { Expr , ArgListNonEmpty }   (alias de llaves, no oficial)
+                    let first = a!(1).into_expr()?;
+                    let rest  = a!(3).into_expr_list()?;
+                    let mut elems = vec![first];
+                    elems.extend(rest);
+                    StackValue::Expr(Expr::new(ExprKind::Vector(Box::new(
+                        VectorExpr::explicit(elems, span)
                     )), span))
                 }
                 _ => return Err(ParseError::internal("VectorLiteral desconocido", span)),

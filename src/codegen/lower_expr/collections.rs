@@ -304,6 +304,153 @@ impl<'ctx> CodegenContext<'ctx> {
                 self.builder.position_at_end(end_bb);
                 Ok(CgValue::Vector(result_ptr))
             }
+
+            // ── new Type[N] — sin generador: solo allocar (ya queda en 0/null) ──
+            // hulk_vec_alloc usa alloc_zeroed, así que el buffer ya está
+            // correctamente inicializado por defecto (0.0 para Number,
+            // null para punteros) sin necesidad de un loop de inicialización.
+            VectorExpr::Alloc { size, generator: None, .. } => {
+                let i32_ty = self.context.i32_type();
+
+                let size_val = self.visit_expr(size)?;
+                let size_f64 = match size_val {
+                    CgValue::Number(f) => f,
+                    _ => return Err(CodegenError::Unsupported(
+                        "el tamaño de new Type[N] debe ser Number".into())),
+                };
+                let count_val = self.builder
+                    .build_float_to_signed_int(size_f64, i32_ty, "alloc_count")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let alloc_fn = self.require_fn("hulk_vec_alloc")?;
+                let vec_ptr = self.builder
+                    .build_call(alloc_fn,
+                        &[count_val.into(), i32_ty.const_int(ELEM_SIZE_BYTES, false).into()], "alloc_vec")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .try_as_basic_value().left()
+                    .ok_or_else(|| CodegenError::Unsupported("hulk_vec_alloc sin retorno".into()))?
+                    .into_pointer_value();
+
+                Ok(CgValue::Vector(vec_ptr))
+            }
+
+            // ── new Type[N]{ id -> expr } — con generador por índice ────────────
+            // Mismo patrón de loop que VectorExpr::Generator, pero el valor
+            // ligado a `id` en cada iteración es el ÍNDICE (como Number),
+            // no un elemento sacado de otro iterable.
+            VectorExpr::Alloc { size, generator: Some((var, body)), .. } => {
+                let fn_cur = self.current_fn()?;
+                let i32_ty = self.context.i32_type();
+
+                let size_val = self.visit_expr(size)?;
+                let size_f64 = match size_val {
+                    CgValue::Number(f) => f,
+                    _ => return Err(CodegenError::Unsupported(
+                        "el tamaño de new Type[N] debe ser Number".into())),
+                };
+                let count_val = self.builder
+                    .build_float_to_signed_int(size_f64, i32_ty, "alloc_count")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let alloc_fn   = self.require_fn("hulk_vec_alloc")?;
+                let result_ptr = self.builder
+                    .build_call(alloc_fn,
+                        &[count_val.into(), i32_ty.const_int(ELEM_SIZE_BYTES, false).into()], "alloc_gen_vec")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .try_as_basic_value().left()
+                    .ok_or_else(|| CodegenError::Unsupported("hulk_vec_alloc (alloc-gen) sin retorno".into()))?
+                    .into_pointer_value();
+
+                // i32 alloca en entry block para el índice del generador
+                let idx_ptr = {
+                    let entry_bb = fn_cur.get_first_basic_block()
+                        .ok_or_else(|| CodegenError::Unsupported("alloc-gen: función sin entry block".into()))?;
+                    let ab = self.context.create_builder();
+                    if let Some(first) = entry_bb.get_first_instruction() {
+                        ab.position_before(&first);
+                    } else {
+                        ab.position_at_end(entry_bb);
+                    }
+                    ab.build_alloca(i32_ty, "alloc_gen_idx")
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?
+                };
+                self.builder.build_store(idx_ptr, i32_ty.const_int(0, false))
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let cond_bb = self.context.append_basic_block(fn_cur, "alloc_gen_cond");
+                let body_bb = self.context.append_basic_block(fn_cur, "alloc_gen_body");
+                let end_bb  = self.context.append_basic_block(fn_cur, "alloc_gen_end");
+                self.builder.build_unconditional_branch(cond_bb)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                self.builder.position_at_end(cond_bb);
+                let idx  = self.builder
+                    .build_load(i32_ty, idx_ptr, "alloc_idx_i32")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?.into_int_value();
+                let cond = self.builder
+                    .build_int_compare(IntPredicate::SLT, idx, count_val, "alloc_gen_lt")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                self.builder.build_conditional_branch(cond, body_bb, end_bb)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                self.builder.position_at_end(body_bb);
+                self.push_scope();
+
+                // El índice se liga a `var` como Number (f64), no se saca de
+                // ningún otro vector — es el propio contador del loop.
+                let idx_f64 = self.builder
+                    .build_signed_int_to_float(idx, self.f64_type(), "alloc_idx_f64")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                let var_slot = self.create_entry_alloca_for(fn_cur, var, &HulkType::Number)?;
+                self.store_place(&var_slot, CgValue::Number(idx_f64))?;
+                self.symbols.insert(var.clone(), var_slot);
+
+                let body_val = self.visit_expr(body)?;
+                let get_fn   = self.require_fn("hulk_vec_get")?;
+                let dest_ptr = self.builder
+                    .build_call(get_fn,
+                        &[result_ptr.into(), idx.into(),
+                          i32_ty.const_int(ELEM_SIZE_BYTES, false).into()], "alloc_dp")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?
+                    .try_as_basic_value().left()
+                    .ok_or_else(|| CodegenError::Unsupported("hulk_vec_get (alloc dest) sin retorno".into()))?
+                    .into_pointer_value();
+
+                match body_val {
+                    CgValue::Number(f) => {
+                        self.builder.build_store(dest_ptr, f)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    }
+                    CgValue::Bool(b) => {
+                        let ext = self.builder
+                            .build_int_z_extend(b, self.context.i64_type(), "b64")
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                        self.builder.build_store(dest_ptr, ext)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    }
+                    CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => {
+                        self.builder.build_store(dest_ptr, p)
+                            .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                    }
+                    _ => {}
+                }
+
+                let next_idx = self.builder
+                    .build_int_add(idx, i32_ty.const_int(1, false), "alloc_next_idx")
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                self.builder.build_store(idx_ptr, next_idx)
+                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
+
+                self.pop_scope();
+                if !self.is_current_block_terminated() {
+                    self.builder.build_unconditional_branch(cond_bb)
+                        .map_err(|e| CodegenError::Builder(e.to_string()))?;
+                }
+
+                self.builder.position_at_end(end_bb);
+                Ok(CgValue::Vector(result_ptr))
+            }
         }
     }
 }

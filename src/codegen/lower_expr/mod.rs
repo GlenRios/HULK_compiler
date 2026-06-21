@@ -201,7 +201,7 @@ impl<'ctx> ExprVisitor<'ctx> for CodegenContext<'ctx> {
                 self.push_scope();
                 for binding in &let_expr.bindings {
                     let val  = self.visit_expr(&binding.value)?;
-                    let ty   = val.hulk_type();
+                    let ty   = self.get_expr_type(&binding.value)?;
                     let slot = self.create_entry_alloca_for(function, &binding.name, &ty)?;
                     self.store_place(&slot, val)?;
                     self.symbols.insert(binding.name.clone(), slot);
