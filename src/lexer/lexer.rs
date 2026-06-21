@@ -44,6 +44,28 @@ impl Lexer {
         {
             let lexeme: String = self.input[start_pos..start_pos + length].iter().collect();
 
+            // Validar secuencias de escape dentro de literales STRING.
+            // El regex de STRING solo valida que el contenido sea
+            // imprimible; las escapes (\n \t \" \\) las procesa el parser
+            // más adelante (semantic_actions.rs), pero una escape
+            // desconocida (p.ej. \q) debe ser un error LÉXICO, no pasar
+            // en silencio. Se detecta aquí, antes del parser, para que
+            // se reporte como LEXICAL (exit 1) y no como SYNTACTIC/SEMANTIC.
+            if token_type == TokenType::STRING {
+                if let Some((bad_lexeme, bad_column)) =
+                    Self::find_invalid_escape(&lexeme, start_column)
+                {
+                    self.advance(length);
+                    return Token::new(
+                        TokenType::ERROR,
+                        bad_lexeme,
+                        start_line,
+                        bad_column,
+                        false,
+                    );
+                }
+            }
+
             self.advance(length);
 
             return Token::new(token_type, lexeme, start_line, start_column, skippable);
@@ -61,6 +83,33 @@ impl Lexer {
             false,
         )
     }
+
+    /// Busca una secuencia de escape inválida dentro de un literal STRING
+    /// ya tokenizado (lexeme incluye las comillas que lo delimitan).
+    /// Las escapes válidas son \n \t \" \\ — las mismas que procesa
+    /// semantic_actions.rs al construir el AST. El string no puede
+    /// contener saltos de línea reales (el regex de STRING ya lo impide),
+    /// así que basta con avanzar columnas, sin trackear líneas.
+    /// Devuelve (lexema_del_error, columna) si encuentra una escape inválida.
+    fn find_invalid_escape(lexeme: &str, start_column: usize) -> Option<(String, usize)> {
+        let chars: Vec<char> = lexeme.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '\\' {
+                match chars.get(i + 1) {
+                    Some('n') | Some('t') | Some('"') | Some('\\') => { i += 2; }
+                    Some(other) => {
+                        return Some((format!("\\{}", other), start_column + i));
+                    }
+                    None => { i += 1; }
+                }
+            } else {
+                i += 1;
+            }
+        }
+        None
+    }
+
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
 
