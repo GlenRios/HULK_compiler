@@ -147,6 +147,7 @@ pub fn compile_to_binary(
         .arg(runtime)
         .arg("-o")
         .arg(bin_path)
+        .arg("-no-pie")
         .arg("-lm")
         .status()
         .map_err(|e| CodegenError::Jit(format!("no se pudo ejecutar gcc: {}", e)))?;
