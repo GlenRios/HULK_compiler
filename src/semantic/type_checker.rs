@@ -839,11 +839,17 @@ impl TypeChecker {
     // ── Llamadas y accesos ────────────────────────────────────────────────────
 
     fn check_call(&mut self, c: &CallExpr) -> HulkType {
-        match &c.callee.kind {
-            // ── base() — llamada al método del padre de mismo nombre ─────────
-            // Según la spec: "base symbol refers to the implementation of the parent"
-            // base() dentro de Knight.name() llama a Person.name()
-            ExprKind::Base => {
+        // ── base(args) — llamada al método del padre de mismo nombre ─────────
+        // "base" es una soft keyword (igual que "self"): se lexea como
+        // IDENTIFIER normal. Solo se interpreta como "llamar al padre" si
+        // NO hay ninguna variable/parámetro/let-binding llamado "base" en
+        // el scope actual. Si sí lo hay (p.ej. `let base: Printer = ...`),
+        // se trata como una llamada normal sobre esa variable, igual que
+        // cualquier otro identificador.
+        if let ExprKind::Identifier { name } = &c.callee.kind {
+            if name == "base" && self.symbols.lookup(name).is_none() {
+                // Según la spec: "base symbol refers to the implementation of the parent"
+                // base() dentro de Knight.name() llama a Person.name()
                 let (Some(type_name), Some(method_name)) =
                     (self.current_type.clone(), self.current_method_name.clone())
                 else {
@@ -867,7 +873,7 @@ impl TypeChecker {
                 };
 
                 // Buscar el método en el padre (o el ancestro más cercano que lo implemente)
-                match self.lookup_method(&parent_name, &method_name) {
+                return match self.lookup_method(&parent_name, &method_name) {
                     None => {
                         // El método no existe en el padre — intentar con el constructor del padre.
                         // Permite base(args) para inicializar campos heredados.
@@ -885,10 +891,11 @@ impl TypeChecker {
                         // Devolver el tipo de retorno del método (no el tipo del padre)
                         sig.return_type.clone()
                     }
-                }
+                };
             }
+        }
 
-            // ── Llamada a función / constructor por nombre ────────────────────
+        match &c.callee.kind {
             // ── Llamada a función / constructor por nombre ────────────────────
             ExprKind::Identifier { name } => {
                 let sym = self.symbols.lookup(name).cloned();

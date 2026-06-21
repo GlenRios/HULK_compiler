@@ -113,11 +113,12 @@ impl TokenDefinition {
                 regex: "inherits",
                 skippable: false,
             },
-            TokenDefinition {
-                token_type: TokenType::KW_BASE,
-                regex: "base",
-                skippable: false,
-            },
+            // NOTA: "base" deliberadamente NO está aquí como keyword reservada.
+            // Es una "soft keyword" (como "self"): se lexea como IDENTIFIER
+            // normal y solo se le da significado especial de "llamar al
+            // método del padre" en check_call() (type_checker.rs) cuando
+            // aparece como callee de una llamada y no hay ninguna variable
+            // local llamada "base" en scope.
             TokenDefinition {
                 token_type: TokenType::KW_PROTOCOL,
                 regex: "protocol",
