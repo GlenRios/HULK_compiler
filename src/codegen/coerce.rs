@@ -100,10 +100,15 @@ impl<'ctx> CodegenContext<'ctx> {
                 self.builder.build_return(Some(&v as &dyn BasicValue))
                     .map_err(|e| CodegenError::Builder(e.to_string()))?;
             }
-            HulkType::Null | HulkType::Unknown => {
-                self.builder.build_return(None)
-                    .map_err(|e| CodegenError::Builder(e.to_string()))?;
-            }
+            // NOTA: Null/Unknown NO usan `ret void` aquí. hulk_type_to_llvm()
+            // mapea Null/Unknown a `ptr` (nunca a void real de LLVM), así
+            // que el tipo declarado de la función SIEMPRE es ptr para estos
+            // casos. Antes había una rama que hacía build_return(None) (ret
+            // void), lo cual no coincidía con el tipo de retorno declarado
+            // y producía: "Function return type does not match operand
+            // type of return inst! ret void / ptr". Por eso ahora caen en
+            // la rama `_` de abajo, que sí devuelve un puntero (null si no
+            // hay valor concreto).
             _ => {
                 let ptr: PointerValue = match val {
                     CgValue::Str(p) | CgValue::Object(p) | CgValue::Vector(p) => p,
