@@ -121,7 +121,10 @@ impl TokenDefinition {
             // local llamada "base" en scope.
             TokenDefinition {
                 token_type: TokenType::KW_PROTOCOL,
-                regex: "protocol",
+                // "interface" es alias de "protocol" — algunos tests/specs
+                // usan ese nombre para el mismo concepto (declaración de
+                // interfaz/protocolo). Mismo TokenType para ambos.
+                regex: "protocol|interface",
                 skippable: false,
             },
             TokenDefinition {
