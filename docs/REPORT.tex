@@ -51,7 +51,7 @@
 \usepackage{titlesec}
 \usepackage{titletoc}
 
-% Capitulos al estilo Bringhurst: número grande gris, titulo en versalitas
+% Capítulos al estilo Bringhurst: número grande gris, título en versalitas
 % Estilo Bringhurst con itálica negrita (preserva tildes en Palatino)
 \titleformat{\chapter}[display]
   {\bfseries\Large}
@@ -478,7 +478,7 @@ los algoritmos que el documento se propone analizar.
     anfitrión para eliminar de raíz una clase entera de errores que
     históricamente han plagado los compiladores escritos en C++:
     \textit{dangling pointers}, \textit{double frees}, lecturas de memoria
-    invalida. El \textit{wrapper} \inkwell{}~\cite{inkwell} aporta la misma
+    inválida. El \textit{wrapper} \inkwell{}~\cite{inkwell} aporta la misma
     garantía sobre el uso de la API~C de \llvm{}.
   \item[D4. Reproducibilidad y \textit{debuggability}.]
     Toda estructura de datos significativa ---la gramática, la tabla LALR, el
@@ -703,7 +703,7 @@ compilador moderno con \textit{backend} basado en \llvm{}: C, C++ y \rust{}.
 La elección recayó sobre \rust{} por cuatro razones técnicas concretas.
 
 \paragraph{Seguridad de memoria sin coste de \textit{garbage collection}.}
-El compilador maneja estructuras de datos complejas con multiples referencias
+El compilador maneja estructuras de datos complejas con múltiples referencias
 cruzadas: tablas de símbolos jerárquicas, grafo de tipos con herencia, tabla de
 parseo LALR con cientos de estados. \rust{} garantiza la ausencia de \textit{dangling
 pointers}, \textit{double frees} y carreras de datos en tiempo de compilación, lo
@@ -718,7 +718,7 @@ compilación, lo que evita bugs por casos faltantes.
 
 \paragraph{Interfaz segura con \llvm{}.}
 La biblioteca \inkwell{}~\cite{inkwell} encapsula la API~C de \llvm{} en abstracciones
-de \rust{} que aprovechan el sistema de tipos para impedir operaciones invalidas
+de \rust{} que aprovechan el sistema de tipos para impedir operaciones inválidas
 (p.\,ej. construir una instrucción en un bloque básico ya terminado). Esto
 contrasta con el uso directo de \code{libLLVM} desde C++, donde tales errores
 producen \textit{segfaults} difíciles de diagnosticar.
@@ -778,7 +778,7 @@ expresión regular original, lo que la hace adecuada para uso práctico.
 \subsection{Ejecución sin determinización}
 
 El enfoque clásico convierte el NFA en un DFA antes de usarlo mediante la
-\textit{construcción de subconjuntos}, lo que produce un autómata mas grande pero mas
+\textit{construcción de subconjuntos}, lo que produce un autómata más grande pero más
 rápido de simular. En este compilador se ha optado por \textbf{ejecutar el NFA
 directamente}, calculando los subconjuntos de estados activos en cada paso. Esta
 decisión se justifica por:
@@ -786,14 +786,14 @@ decisión se justifica por:
 \begin{itemize}
   \item la simplicidad del código resultante;
   \item el tamaño modesto de los ficheros fuente \hulk{} (decenas a miles de líneas);
-  \item la ausencia de la fase de determinización, que podria duplicar exponencialmente
+  \item la ausencia de la fase de determinización, que podría duplicar exponencialmente
     el número de estados en el peor caso.
 \end{itemize}
 
 \subsection{El MasterNFA y la regla del máximo prefijo}
 
 Para que el \textit{lexer} reconozca todos los tipos de tokens a la vez, los NFA
-individuales de cada patron se combinan en un \textbf{MasterNFA}: un autómata con
+individuales de cada patrón se combinan en un \textbf{MasterNFA}: un autómata con
 un nuevo estado inicial y transiciones epsilon hacia los estados iniciales de cada
 NFA componente. La \cref{fig:master} ilustra el esquema.
 
@@ -821,15 +821,15 @@ NFA componente. La \cref{fig:master} ilustra el esquema.
   \node[font=\scriptsize, right=0.6cm of f3] {número};
 \end{tikzpicture}
 \caption{MasterNFA: estado inicial común con transiciones epsilon a los NFA
-  individuales por patron.}
+  individuales por patrón.}
 \label{fig:master}
 \end{figure}
 
 Cuando varios estados de aceptación son alcanzables simultaneamente, la regla del
-\textit{máximo prefijo} (\textit{maximal munch}) selecciona el patron que reconoce la
-cadena mas larga. En caso de empate (por ejemplo, \code{if} podria interpretarse como
+\textit{máximo prefijo} (\textit{maximal munch}) selecciona el patrón que reconoce la
+cadena más larga. En caso de empate (por ejemplo, \code{if} podría interpretarse como
 \textit{keyword} o como identificador), la \textbf{prioridad} numérica asignada a
-cada patron resuelve la ambigüedad: los \textit{keywords} tienen mayor prioridad que
+cada patrón resuelve la ambigüedad: los \textit{keywords} tienen mayor prioridad que
 los identificadores.
 
 \section{Conjunto de tokens reconocidos}
@@ -864,37 +864,49 @@ Delimitadores            &
   \code{,}, \code{;}, \code{:}, \code{.} \\
 Literales                &
   números en notación decimal y flotante, cadenas entre comillas dobles,
-  caracteres entre comillas simples, identificadores alfanumericos \\
+  caracteres entre comillas simples, identificadores alfanuméricos \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{Secuencias de escape: limitación conocida}
+\section{Secuencias de escape}
 
 Los literales de cadena se reconocen como una secuencia entre comillas dobles que
 admite cualquier carácter, salvo la propia comilla doble sin escapar. El
-\textit{lexer} actual emite el lexema en bruto, comillas incluidas, y la fase
-semántica retira las comillas envolventes para construir el nodo
-\code{Literal::String}. En esta versión del compilador, las secuencias de escape
-\code{\textbackslash n}, \code{\textbackslash t}, \code{\textbackslash"} y
-\code{\textbackslash\textbackslash} no son descodificadas: cualquier
-contrabarra que aparezca en el cuerpo del literal se trasmite tal cual al
-generador de código y, por tanto, al \textit{runtime}. La consecuencia práctica es
-que un \code{print("\textbackslash nhola")} imprime literalmente
-\code{\textbackslash nhola} en lugar de un salto de línea seguido de
-\code{hola}. Esta omisión está documentada como limitación conocida en el
-\cref{cap:lim}; su implementación es directa pero queda fuera del calendario del
-proyecto.
+\textit{lexer} emite el lexema en bruto ---comillas incluidas--- y delega en la
+fase de acciones semánticas del parser el retiro de las comillas envolventes y la
+descodificación de las secuencias de escape. Esta separación de responsabilidades
+preserva la posición original del lexema en el código fuente, lo que mantiene
+intactas las coordenadas usadas en los mensajes de error, y concentra la
+manipulación de cadenas en un único punto del pipeline.
+
+El \textit{lexer} valida que toda contrabarra dentro de un literal vaya seguida
+de uno de los caracteres reconocidos: una contrabarra seguida de un carácter
+ajeno al conjunto admitido produce un error léxico con la columna exacta del
+fallo. Las secuencias válidas y su traducción son:
+
+\begin{lstlisting}[style=base,numbers=none,caption={Tabla de descodificación aplicada al construir \code{Literal::String}.}]
+\n  -> salto de línea (U+000A)
+\t  -> tabulación horizontal (U+0009)
+\"  -> comilla doble
+\\  -> contrabarra
+\end{lstlisting}
+
+La descodificación se realiza al construir el nodo \code{Literal::String} en las
+acciones semánticas del parser: un bucle sobre los caracteres del lexema
+sustituye cada par \code{\textbackslash{}c} por su carácter correspondiente y
+copia el resto sin cambios. Por tanto, un \code{print("\textbackslash{}nhola")}
+imprime un salto de línea seguido de \code{hola}, como cabe esperar.
 
 \section{Recuperación de errores}
 
-Cuando el \textit{lexer} encuentra un carácter que no inicia ningun patron válido,
+Cuando el \textit{lexer} encuentra un carácter que no inicia ningún patrón válido,
 emite un token especial \code{ERROR} en lugar de detener la compilación. Esto permite
-que el \textit{parser} continúe avanzando y eventualmente reporte multiples errores
+que el \textit{parser} continúe avanzando y eventualmente reporte múltiples errores
 en una misma invocación. El formato del mensaje sigue el contrato oficial de la
 interfaz de evaluación:
 
-\begin{lstlisting}[style=base,numbers=none,caption={Formato estandar de error léxico.}]
+\begin{lstlisting}[style=base,numbers=none,caption={Formato estándar de error léxico.}]
 ! (línea,columna) LEXICAL: unexpected character 'X'
 \end{lstlisting}
 
@@ -906,7 +918,7 @@ interfaz de evaluación:
 \lettrine[lines=2,findent=2pt,nindent=0pt]{U}{na} vez convertido el fuente en un flujo
 de tokens, la fase de análisis sintáctico verifica que dicho flujo se ajuste a la
 gramática del lenguaje y construye una representación estructurada del programa:
-el \textit{arbol sintáctico abstracto} (AST).
+el \textit{árbol sintáctico abstracto} (AST).
 
 \section{Parser LALR(1) implementado desde cero}
 
@@ -934,7 +946,7 @@ de esa decisión:
 
 \section{Pipeline del parser}
 
-El modulo de análisis sintáctico se compone de cuatro capas claramente delimitadas
+El módulo de análisis sintáctico se compone de cuatro capas claramente delimitadas
 que se describen a continuación.
 
 \subsection{Definición de la gramática}
@@ -965,7 +977,7 @@ $\alpha \in (N \cup T)^*$ una forma sentencial.
 \end{definition}
 
 El algoritmo de punto fijo itera sobre las producciones actualizando los conjuntos
-hasta que en una iteración completa no cambia ningun conjunto.
+hasta que en una iteración completa no cambia ningún conjunto.
 
 \subsection{Construcción de la tabla LALR}
 
@@ -1029,7 +1041,7 @@ lado derecho de la producción en un nodo del AST.
 \section{Jerarquía de precedencias}
 
 La especificación oficial de \hulk{} no establece la precedencia de operadores de
-forma explicita. La gramática implementada codifica la precedencia estandar
+forma explícita. La gramática implementada codifica la precedencia estándar
 matemática directamente en la jerarquía de no-terminales, evitando la necesidad de
 declaraciones de precedencia separadas. El \cref{lst:prec} muestra el esquema.
 
@@ -1056,7 +1068,7 @@ derecha en la regla \code{Power}: la expresión $2 \,\widehat{}\, 3 \,\widehat{}
 se parsea como $2 \,\widehat{}\, (3 \,\widehat{}\, 2) = 2^9 = 512$, no como
 $(2 \,\widehat{}\, 3) \,\widehat{}\, 2 = 64$.
 
-\section{El arbol sintáctico abstracto}
+\section{El árbol sintáctico abstracto}
 
 El AST esta definido en \code{src/parser/ast/} mediante enumerados \rust{} con datos
 asociados. El nodo raíz es \code{Program}, que contiene una lista de declaraciones
@@ -1117,7 +1129,7 @@ lista de declaraciones del programa.
 Todas las firmas de funciones, los miembros de tipos (atributos y métodos) y los
 cuerpos de protocolos se registran en la estructura \code{TypeHierarchy}. Los
 miembros sin anotación de tipo reciben un marcador \code{HulkType::Unknown} que
-sera resuelto en la segunda pasada. Esta pasada es indispensable para soportar
+será resuelto en la segunda pasada. Esta pasada es indispensable para soportar
 \textbf{recursión mutua} entre funciones y tipos: en el momento de verificar el
 cuerpo de \code{foo}, la firma de \code{bar} ya esta disponible aunque \code{bar}
 este declarada después.
@@ -1132,7 +1144,7 @@ Esta escritura es \emph{crítica} para la fase de generación de código. Si un 
 \code{val = start} no tiene anotación de tipo, la pasada~1 almacena \code{Unknown}; la
 pasada~2 infiere \code{Number} a partir del inicializador; la escritura de vuelta
 hace que \code{Number} este disponible para el generador de código. Sin esta
-escritura, el codegen no podria determinar el tipo \llvm{} correcto del campo.
+escritura, el codegen no podría determinar el tipo \llvm{} correcto del campo.
 
 \begin{lstlisting}[style=rustst, caption={Propagación del tipo inferido en la pasada
   semántica.}, label={lst:writeback}]
@@ -1162,8 +1174,8 @@ nombre y no de su estructura) con \textbf{subtype polymorphism}~\cite{pierce2002
   \item \textbf{Protocolos}: tipos de interfaz que listan firmas de métodos. La
     conformidad es \textbf{estructural}: un tipo conforma a un protocolo si declara
     todos sus métodos con firmas compatibles, sin necesidad de declarar la
-    relación explicitamente.
-  \item \textbf{Vectores}: el tipo \code{Vector<T>} para colecciones homogeneas de
+    relación explícitamente.
+  \item \textbf{Vectores}: el tipo \code{Vector<T>} para colecciones homogéneas de
     elementos de tipo \code{T} (vease \cref{cap:ext}).
   \item \textbf{Tipos auxiliares}: \code{Unknown} (marcador en la pasada~1),
     \code{Never} (tipo de error para evitar cascadas de errores falsos).
@@ -1295,19 +1307,19 @@ mensajes con posición precisa:
 
 \lettrine[lines=2,findent=2pt,nindent=0pt]{C}{ompletado} el análisis semántico, el
 compilador dispone de un AST anotado con tipos y de una jerarquía de tipos
-verificada. La fase de generación de código traduce este AST en un modulo de
+verificada. La fase de generación de código traduce este AST en un módulo de
 \llvm{}~Intermediate~Representation, listo para ser optimizado y compilado a código
 máquina nativo.
 
 \section{\llvm{}~IR mediante \inkwell{}}
 
-\llvm{}~\cite{lattner2004} es la infraestructura de compilación mas utilizada del
+\llvm{}~\cite{lattner2004} es la infraestructura de compilación más utilizada del
 mundo. Provee una representación intermedia tipada y de bajo nivel, un conjunto
 extensible de \textit{passes} de optimización, y \textit{backends} para una variedad
 de arquitecturas (x86-64, ARM, RISC-V, WebAssembly, etc.).
 
 La biblioteca \inkwell{} es un \textit{wrapper} \rust{} de la API~C de \llvm{} que
-aprovecha el sistema de tipos del lenguaje para impedir construcciones invalidas en
+aprovecha el sistema de tipos del lenguaje para impedir construcciones inválidas en
 tiempo de compilación. Por ejemplo, los \textit{builder} de instrucciones rechazan
 operaciones sobre bloques básicos ya terminados, y los valores estan parametrizados
 por el \code{Context} de \llvm{} para impedir mezclas entre contextos distintos.
@@ -1391,13 +1403,13 @@ orden \emph{padre-primero}.
 El orden \textit{padre primero} es deliberado: garantiza que un puntero a un
 objeto del tipo \code{Dog} (que hereda de \code{Animal}) sea \textbf{bit-compatible}
 con un puntero a \code{Animal} respecto a los campos heredados. Esto evita el costo
-de reinterpretación de bits o de tablas de desplazamiento que serian necesarias
+de reinterpretación de bits o de tablas de desplazamiento que serían necesarias
 con otros layouts.
 
 \section{Tablas de métodos virtuales (vtables)}
 
 El polimorfismo dinámico de \hulk{} se implementa mediante \textit{vtables}, la
-técnica estandar utilizada por C++, Java (compilado JIT) y otros lenguajes con
+técnica estándar utilizada por C++, Java (compilado JIT) y otros lenguajes con
 herencia y polimorfismo.
 
 Para cada tipo se crea una \textbf{vtable global} (un \code{global} \llvm{}) que
@@ -1537,14 +1549,14 @@ con un puntero malformado.
 El código generado primero verifica el rango de etiquetas (igual que en \code{is}).
 Si la verificación falla, llama a la función de \textit{runtime}
 \code{hulk\_type\_error}, que imprime el mensaje de error y llama a \code{abort(3)}.
-Si la verificación tiene exito, el puntero original se utiliza directamente: no se
+Si la verificación tiene éxito, el puntero original se utiliza directamente: no se
 requiere reinterpretación de bits porque el layout es compatible por la
 organización padre-primero.
 
 \section{La palabra clave \code{base()}}
 
 Dentro de un método, \code{base(args)} invoca la implementación del padre. A
-diferencia del despacho virtual --- que cargaria la vtable y podria producir una
+diferencia del despacho virtual --- que cargaría la vtable y podría producir una
 llamada recursiva si el padre llama de vuelta al método del hijo ---, \code{base()}
 es una \textbf{llamada directa estática}: el nombre de la función del padre se
 conoce en tiempo de compilación.
@@ -1585,7 +1597,7 @@ Antes de la emisión de código objeto se aplica el \textit{pipeline} del nuevo
 \end{tabularx}
 \end{table}
 
-Esta combinación produce un IR significativamente mas compacto y próximo al código
+Esta combinación produce un IR significativamente más compacto y próximo al código
 generado por compiladores maduros como \code{gcc -O2}.
 
 % ════════════════════════════════════════════════════════════════════════════
@@ -1628,9 +1640,9 @@ y nombres no decorados para que sean accesibles desde el código generado.
 \code{hulk\_vec\_size(p)}          & Lee el header y devuelve el conteo. \\
 \code{hulk\_range\_alloc(s,e)}     & Crea iterador para el rango $[s, e)$. \\
 \code{hulk\_range\_next(p)}        & Avanza el iterador; devuelve \code{true} si
-  hay mas elementos. \\
+  hay más elementos. \\
 \code{hulk\_range\_current(p)}     & Valor actual del iterador. \\
-\code{hulk\_rand()}                & Numero aleatorio uniforme en $[0, 1)$. \\
+\code{hulk\_rand()}                & Número aleatorio uniforme en $[0, 1)$. \\
 \code{hulk\_type\_error(p)}        & Imprime el mensaje y aborta (\code{as} fallido). \\
 \bottomrule
 \end{tabularx}
@@ -1702,178 +1714,916 @@ requiere a \llvm{} en tiempo de ejecución. Sus únicas dependencias son la libc
 sistema y la \code{libm}.
 
 % ════════════════════════════════════════════════════════════════════════════
-\chapter{Extensión del lenguaje: vectores con expresiones generadoras}
+\chapter{Extensiones del lenguaje implementadas}
 \label{cap:ext}
 % ════════════════════════════════════════════════════════════════════════════
 
-\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{ste} capítulo presenta la extensión
-central del lenguaje implementada en este compilador: un \textbf{sistema de
-vectores con expresiones generadoras}, estáticamente tipado, integrado con el
-sistema de protocolos del lenguaje y con verificación segura de índices en
-tiempo de ejecución. La extensión modifica simultáneamente la sintaxis ---añade
-literales de vector, una notación generadora inspirada en la \textit{set-builder
-notation} matemática, y un operador de indexación---, el sistema de tipos
----introduce un constructor de tipos paramétrico $\mathtt{Vector\langle T\rangle}$
-con regla de varianza definida---, la semántica operacional ---introduce reglas
-de evaluación con un mecanismo de aborto controlado para índices inválidos--- y
-el \textit{runtime} del lenguaje ---añade primitivas de asignación, acceso y
-medida de tamaño con verificación de límites.
+\lettrine[lines=2,findent=2pt,nindent=0pt]{S}{obre} el núcleo del lenguaje
+---expresiones, funciones, variables, control de flujo, tipos, herencia y
+verificación de tipos--- nuestro compilador implementa tres extensiones que
+amplían de forma significativa las construcciones disponibles al programador:
+los \textbf{protocolos} con conformidad estructural, los \textbf{iterables}
+con el tipo predefinido \code{Range}, y los \textbf{vectores} con su sistema
+de literales, expresiones generadoras y construcciones de alocación
+dimensionada. Este capítulo se dedica a describir cada una de ellas.
 
-\section{Motivación}
+Las tres extensiones están profundamente entrelazadas: los vectores
+implementan el protocolo iterable, los iterables se exponen al programador
+mediante el operador de anotación \code{T*} cuya semántica se apoya en el
+protocolo, y la conformidad estructural de los tipos es la maquinaria que
+hace todo eso uniforme. Tratarlas juntas en un único capítulo permite, por
+tanto, exponer su diseño como un sistema coherente y no como una colección
+de incorporaciones inconexas. Para cada una se describe lo que hace, cómo se
+implementa, qué soluciones equivalentes ofrecen otros lenguajes
+contemporáneos y qué decisiones de diseño distinguen nuestra implementación
+de las alternativas que se descartaron.
 
-En su núcleo básico, \hulk{} no incluye estructuras de datos compuestas: las
-únicas formas no escalares disponibles son los rangos producidos por la función
-\code{range(s,e)} (que tienen una semántica puramente iterable, sin acceso
-aleatorio) y los tipos definidos por el usuario. Para escribir algoritmos
-elementales que operen sobre colecciones ---calcular el promedio de una lista de
-números, aplicar una función a cada elemento, filtrar los valores que cumplen
-una condición--- el programador debe declarar un tipo propio que encapsule la
-lógica de tamaño, acceso e iteración. Esta declaración no es difícil pero es
-sistemáticamente verbosa, en un lenguaje cuya virtud central es precisamente la
-concisión expresiva.
+% ───────────────────────────────────────────────────────────────────────────
+\section{Protocolos: tipado estructural en tiempo de compilación}
+\label{sec:ext-proto}
+% ───────────────────────────────────────────────────────────────────────────
 
-La propia especificación del lenguaje reconoce esta carencia y bosqueja, en
-una sección dedicada de su apéndice gramatical, un sistema de vectores como
-extensión natural. La extensión presentada en este capítulo toma esa propuesta
-como punto de partida y la enriquece en cuatro sentidos:
+\subsection{Motivación}
+
+Un protocolo en \hulk{} es una colección de firmas de método sin
+implementación. Un tipo concreto satisface el protocolo si declara todos sus
+métodos con firmas compatibles, sin necesidad de declarar explícitamente que
+lo implementa. Esta noción ---el tipado \emph{estructural} en contraposición
+al \emph{nominal}--- es la pieza que permite escribir funciones genéricas
+sobre familias heterogéneas de tipos sin recurrir a la jerarquía nominal por
+herencia: una función que recibe un parámetro de tipo \code{Drawable} puede
+operar sobre cualquier objeto que sepa dibujarse, con independencia de su
+tipo concreto.
+
+La motivación de incluir esta extensión en el compilador es doble. Primero,
+los protocolos son el único mecanismo del lenguaje que rompe la rigidez de
+la jerarquía nominal: dos tipos sin relación de herencia pueden conformar
+con el mismo protocolo si casualmente comparten una firma de método.
+Segundo, otras extensiones posteriores ---en particular los iterables y los
+funtores--- se definen \emph{en términos de} protocolos predefinidos, de
+modo que sin protocolos esas extensiones no serían representables. La
+implementación de los protocolos es, por tanto, condición previa de las
+demás.
+
+\subsection{Sintaxis, AST y sinónimo léxico \code{interface}}
+
+La gramática de los protocolos sigue una forma simple y previsible:
+
+\begin{lstlisting}[style=bnf, caption={Producciones gramaticales para la declaración de protocolos.}, label={lst:gram-protocol}]
+ProtocolDecl -> 'protocol' IDENTIFIER '{' ProtocolBody '}'
+              | 'protocol' IDENTIFIER 'extends' TypeName '{' ProtocolBody '}'
+\end{lstlisting}
+
+El cuerpo de un protocolo es una lista de firmas de método: nombres con sus
+listas de parámetros tipados y un \emph{tipo de retorno obligatorio}, a
+diferencia de las declaraciones de método de un tipo concreto, donde el
+retorno puede omitirse y el verificador lo infiere a partir del cuerpo.
+Esta obligatoriedad es estructural y no incidental: como un protocolo no
+posee implementación, no hay información a partir de la cual inferir.
+
+El parser construye, para cada declaración, un nodo del AST con tres campos
+significativos: el nombre del protocolo, el nombre del protocolo padre (si
+lo hay) y la lista de firmas de método:
+
+\begin{lstlisting}[style=rustst, caption={Representación AST de una declaración de protocolo.}, label={lst:ast-protocol}]
+pub struct ProtocolDecl {
+    pub name:    String,
+    pub extends: Option<TypeName>,
+    pub methods: Vec<MethodSignature>,
+    pub span:    Span,
+}
+
+pub struct MethodSignature {
+    pub name:        String,
+    pub params:      Vec<Param>,
+    pub return_type: TypeName,
+    pub span:        Span,
+}
+\end{lstlisting}
+
+\paragraph{Sinónimo léxico \code{interface}.}
+La palabra clave canónica del lenguaje para introducir un protocolo es
+\code{protocol}. Sin embargo, el concepto que el lenguaje denomina
+\emph{protocolo} se conoce universalmente como \emph{interface} en los
+lenguajes orientados a objetos contemporáneos: Java, C\#, TypeScript, Kotlin
+y Swift utilizan \code{interface} o \code{protocol} de manera intercambiable
+en su literatura introductoria. Para reducir la fricción cognitiva de un
+programador con experiencia en cualquiera de estos lenguajes, nuestra
+implementación admite \code{interface} como \emph{alias léxico} estricto de
+\code{protocol}.
+
+La modificación se concentra exclusivamente en el analizador léxico, donde
+la expresión regular asociada al terminal de la palabra clave de protocolo
+admite ambas alternativas:
+
+\begin{lstlisting}[style=rustst, caption={Alias léxico para el terminal de protocolo.}]
+TokenDefinition {
+    token_type: TokenType::KW_PROTOCOL,
+    regex: "protocol|interface",
+    skippable: false,
+},
+\end{lstlisting}
+
+El autómata maestro construido por la construcción clásica de
+Thompson~\cite{thompson1968} incorpora ambas alternativas como caminos
+paralelos desde el estado inicial del subautómata del terminal; el efecto
+tras la simulación es que el flujo de tokens contiene en ambos casos el
+mismo terminal. La gramática, las estructuras del AST, el verificador de
+tipos y el generador de código no se modifican: las dos formas son
+indistinguibles a partir del flujo de tokens. Una declaración
+\code{interface T \{ ... \}} produce exactamente el mismo nodo que
+\code{protocol T \{ ... \}} y conforma al mismo tipo en el sistema de
+tipos.
+
+\subsection{Sistema de tipos y conformidad estructural}
+
+En el sistema de tipos del compilador, los protocolos son un constructor
+de tipo de primer nivel junto con los demás tipos del lenguaje:
+
+\begin{lstlisting}[style=rustst]
+pub enum HulkType {
+    Number, StringT, Boolean, Null, Object,
+    Vector(Box<HulkType>),
+    UserDefined(String),
+    Protocol(String),
+    Unknown, Never,
+}
+\end{lstlisting}
+
+Para cada declaración de protocolo que aparece en el programa, el
+verificador registra una entrada en una tabla de protocolos que contiene el
+nombre, el nombre del protocolo extendido (si lo hay) y el conjunto de
+firmas de método:
+
+\begin{lstlisting}[style=rustst]
+pub struct ProtocolInfo {
+    pub name:    String,
+    pub extends: Option<String>,
+    pub methods: HashMap<String, FuncSignature>,
+}
+\end{lstlisting}
+
+La pieza central del verificador es la función que decide si un tipo
+concreto \code{T} conforma con un protocolo \code{P}. Su lógica sigue tres
+reglas:
+
+\begin{enumerate}
+  \item Si el padre nominal de \code{T} ya conforma con \code{P}, entonces
+    \code{T} hereda la conformidad: la relación es congruente con la
+    herencia declarada.
+  \item Para cada método declarado en \code{P}, debe existir un método
+    homónimo en \code{T} con una \emph{firma compatible} bajo las reglas de
+    varianza.
+  \item Si \code{P} extiende un protocolo \code{Q}, entonces \code{T} debe
+    conformar adicionalmente con \code{Q}.
+\end{enumerate}
+
+Las reglas de varianza son las habituales para sistemas con subtipado de
+funciones: los parámetros son \emph{contravariantes} y el retorno es
+\emph{covariante}. La función auxiliar que implementa esta verificación
+recorre las firmas posición a posición y aplica la relación de conformidad
+en cada caso:
+
+\begin{lstlisting}[style=rustst, caption={Verificación de compatibilidad de firmas con varianza.}, label={lst:variance}]
+fn signatures_protocol_compatible(
+    &self,
+    type_sig: &FuncSignature,
+    proto_sig: &FuncSignature,
+) -> bool {
+    // Retorno COVARIANTE: type.return debe conformar a proto.return
+    if !self.conforms(&type_sig.return_type, &proto_sig.return_type) {
+        return false;
+    }
+    // Parametros CONTRAVARIANTES: proto.param debe conformar a type.param
+    for ((_, type_param), (_, proto_param))
+            in type_sig.params.iter().zip(proto_sig.params.iter()) {
+        if !self.conforms(proto_param, type_param) {
+            return false;
+        }
+    }
+    true
+}
+\end{lstlisting}
+
+La intuición de la varianza es la siguiente. Si un protocolo \code{P}
+declara un método \code{m(x: Animal): Mamifero}, una implementación que
+firme \code{m(x: Object): Perro} satisface el contrato: acepta más entradas
+(\code{Object} es más general que \code{Animal}, contravarianza) y produce
+salidas más específicas (\code{Perro} conforma con \code{Mamifero},
+covarianza). Cualquier código cliente que pase un \code{Animal} a \code{m}
+estará pasando, en particular, un \code{Object}; cualquier código cliente
+que asuma recibir un \code{Mamifero} aceptará sin problema un \code{Perro}.
+
+\subsection{Despacho dinámico en \llvm{}}
+
+Cuando una expresión del programa invoca un método sobre un valor cuyo tipo
+estático es un protocolo, el compilador no puede determinar en tiempo de
+compilación qué implementación concreta se ejecutará. La elección depende
+del \emph{tipo dinámico} del receptor, conocido sólo en ejecución. El
+generador de código resuelve este caso mediante un despacho indirecto
+basado en una \emph{etiqueta de tipo} almacenada en el primer campo de toda
+instancia de objeto.
+
+La estructura emitida es la siguiente. Sea $p$ el puntero al receptor, $P$
+el protocolo declarado y $\{T_1, T_2, \ldots, T_k\}$ el conjunto de tipos
+que conforman con $P$ en el módulo actual. El compilador carga el campo de
+etiqueta de tipo de $p$, emite una instrucción \code{switch} con un destino
+por cada $T_i$, y en cada destino genera una llamada directa a la función
+estática que materializa la implementación concreta del método en $T_i$.
+Los valores de retorno se reúnen en un nodo \texttt{phi} al final:
+
+\begin{lstlisting}[style=llvmst, caption={Patrón \llvm{}~IR para despacho de método de protocolo.}, label={lst:dispatch}]
+  %proto_tag = load i32, ptr %p
+  switch i32 %proto_tag, label %proto_unreachable [
+    i32 1, label %proto_case_Square
+    i32 2, label %proto_case_Triangle
+    i32 3, label %proto_case_Circle
+  ]
+
+proto_case_Square:
+  %r0 = call double @__hulk_method_Square_area(ptr %p)
+  br label %proto_merge
+
+proto_case_Triangle:
+  %r1 = call double @__hulk_method_Triangle_area(ptr %p)
+  br label %proto_merge
+
+proto_case_Circle:
+  %r2 = call double @__hulk_method_Circle_area(ptr %p)
+  br label %proto_merge
+
+proto_unreachable:
+  unreachable
+
+proto_merge:
+  %proto_ret = phi double [ %r0, %proto_case_Square ],
+                          [ %r1, %proto_case_Triangle ],
+                          [ %r2, %proto_case_Circle ]
+\end{lstlisting}
+
+El bloque \code{proto\_unreachable} no se ejecuta nunca porque el
+verificador de tipos garantiza, en tiempo de compilación, que todo objeto
+cuyo tipo estático sea un protocolo $P$ tiene una etiqueta de tipo
+correspondiente a algún conformante de $P$. La instrucción
+\code{unreachable} de \llvm{} comunica esta garantía al optimizador y
+permite eliminar la rama \code{default} del \code{switch} sin pagar el
+coste de un test de seguridad.
+
+\paragraph{La decisión de no usar \emph{fat pointers}.}
+Una alternativa clásica al despacho por etiqueta de tipo es la
+representación de los valores de tipo protocolo como \emph{fat pointers}:
+un par formado por el puntero al objeto y un puntero a su tabla de
+métodos para ese protocolo. Esta es la convención de Rust con
+\code{dyn Trait} y de Go con sus \code{interface\{\}}. Nuestra
+implementación rechaza esta alternativa por una razón concreta: la
+\code{vtable} es una propiedad del \emph{tipo}, no del par
+\emph{(tipo, protocolo)}. Cada tipo concreto tiene una única \code{vtable}
+con todos sus métodos virtuales; el despacho por protocolo se reduce a un
+\code{switch} que selecciona qué tipo concreto invoca su método estático,
+sin necesidad de duplicar tablas por (tipo, protocolo). El coste asintótico
+es comparable ---tras la optimización a \emph{jump table} de \llvm{}, $O(1)$
+en ambos casos--- pero el coste en bytes del módulo emitido es menor: no se
+almacenan tablas de métodos específicas por protocolo, sólo el conjunto de
+implementaciones estáticas por tipo.
+
+\subsection{Análisis comparativo}
+
+La construcción ``conjunto de métodos abstractos al que un tipo puede
+conformar'' tiene encarnaciones en virtualmente todos los lenguajes
+orientados a objetos contemporáneos, divididas según dos ejes ortogonales:
+\emph{nominal vs. estructural} (¿se declara explícitamente la conformidad o
+se deriva de la presencia de los métodos?) y \emph{estática vs. dinámica}
+(¿se verifica en compilación o en ejecución?).
+
+\begin{table}[H]
+\centering
+\caption{Comparativa del mecanismo de conformidad por lenguaje.}
+\label{tab:proto-lang}
+\begin{tabularx}{\textwidth}{lXXX}
+\toprule
+\textsc{Lenguaje} & \textsc{Construcción} & \textsc{Conformidad} & \textsc{Varianza} \\
+\midrule
+HULK    & \code{protocol}/\code{interface}  & Estructural, estática  & Cov. retorno, contrav. arg. \\
+Java    & \code{interface}                  & Nominal, estática     & Cov. retorno (desde Java 5) \\
+C\#     & \code{interface}                  & Nominal, estática     & Cov. retorno (desde C\# 9) \\
+Rust    & \code{trait}                       & Nominal, estática     & Sin varianza implícita \\
+Swift   & \code{protocol}                    & Nominal, estática     & Cov./contrav. explícita \\
+Go      & \code{interface}                  & Estructural, estática  & Cov. retorno, contrav. arg. \\
+Scala   & \code{trait}                       & Nominal, estática     & Cov./contrav. explícita (\code{+T}/\code{-T}) \\
+TypeScript & \code{interface}/\code{type}   & Estructural, estática  & Bivariante por defecto \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La elección de \hulk{} ---estructural y estática--- coincide con la de Go y
+TypeScript. La diferencia más visible con Go reside en la sintaxis: en Go la
+inferencia del protocolo es completamente implícita y no existe un
+mecanismo análogo a \code{extends} para protocolos. La diferencia con
+TypeScript reside en el modelo de varianza: TypeScript es bivariante por
+defecto en posiciones de parámetro de método (una decisión polémica
+documentada como un \emph{footgun} en su manual), mientras que \hulk{}
+sigue la convención matemáticamente correcta de Liskov~\cite{liskov1994}:
+covarianza en retornos, contravarianza en argumentos.
+
+La diferencia con Java, C\#, Rust, Swift y Scala es estructural vs. nominal.
+En esos lenguajes, un tipo debe declarar explícitamente \emph{qué}
+interfaces o \emph{traits} implementa. Esta declaración tiene ventajas
+---intención explícita, mejor diagnóstico de error--- pero impone un coste
+en flexibilidad: dos jerarquías independientes que casualmente compartan
+una firma de método no pueden interoperar sin recurrir a wrappers
+explícitos (adaptadores). La conformidad estructural elimina esta fricción
+a cambio de una propiedad: la conformidad es \emph{ambiental}, depende sólo
+de las firmas, y añadir o quitar un método en un tipo puede romper la
+conformidad de manera silenciosa.
+
+\subsection{Decisiones de diseño}
+
+\paragraph{Por qué \emph{vtable} por tipo y no por protocolo.}
+Cada tipo concreto en nuestra implementación tiene una única \code{vtable}
+con todos sus métodos virtuales. Una alternativa habitual ---usada por C++
+con herencia múltiple--- consiste en mantener una \code{vtable} por cada
+combinación de (tipo, base virtual). La razón por la que \hulk{} no
+necesita esta complejidad es que el lenguaje sólo admite \emph{herencia
+simple}: cada tipo tiene a lo sumo un padre, y el conjunto de métodos
+virtuales heredados está totalmente ordenado por la cadena de herencia. El
+modelo de protocolos por \code{switch} sobre tipo concreto se compone
+cómodamente con \emph{vtables} por tipo: el \code{switch} selecciona el
+tipo, la \code{vtable} de ese tipo selecciona el método.
+
+\paragraph{Por qué calcular los conformantes en tiempo de compilación.}
+La emisión del \code{switch} requiere conocer en compilación la lista
+completa de tipos que conforman con cada protocolo. Esta enumeración es
+posible porque \hulk{} no admite carga dinámica de tipos: todo el código del
+programa es conocido al momento de compilar. Lenguajes con carga dinámica
+de tipos como Java o C\# no pueden recurrir a esta técnica y deben pagar el
+coste de mantener tablas indirectas (\emph{itables} en la jerga de la JVM)
+que se consultan en ejecución. Para \hulk{}, la enumeración estática es a
+la vez más rápida en ejecución y más simple de implementar.
+
+% ───────────────────────────────────────────────────────────────────────────
+\section{Iterables y rangos: el protocolo \code{Iterable}}
+\label{sec:ext-iter}
+% ───────────────────────────────────────────────────────────────────────────
+
+\subsection{Motivación}
+
+El protocolo \code{Iterable} y el tipo predefinido \code{Range} forman la
+infraestructura del lenguaje para la iteración sobre colecciones. El
+protocolo declara dos métodos: \code{next(): Boolean}, que avanza el
+iterador interno y devuelve si quedan elementos, y \code{current(): T}, que
+devuelve el elemento actual. El ciclo \code{for (x in iter) body} es azúcar
+sintáctico que se baja al \code{while} equivalente que invoca \code{next} y
+\code{current} alternadamente. El operador \code{T*} en una anotación de
+tipo permite que un parámetro acepte cualquier tipo que implemente el
+protocolo, sin atarse a una implementación concreta.
+
+La motivación práctica es la unificación: una vez que \code{Range}, los
+vectores y cualquier tipo definido por el usuario implementan el protocolo,
+el ciclo \code{for} y las expresiones generadoras de vectores
+(\cref{sec:ext-vec}) operan uniformemente sobre todos ellos.
+
+\subsection{El protocolo \code{Iterable} y el tipo \code{Range}}
+
+El protocolo \code{Iterable} se registra durante la inicialización del
+sistema de tipos, antes de procesar las declaraciones del programa fuente,
+como uno más de los tipos predefinidos del lenguaje:
+
+\begin{lstlisting}[style=rustst, caption={Registro del protocolo \code{Iterable} como tipo predefinido.}]
+self.protocols.insert("Iterable".into(), ProtocolInfo {
+    name:    "Iterable".into(),
+    extends: None,
+    methods: {
+        let mut m = HashMap::new();
+        m.insert("next".into(), FuncSignature {
+            params: vec![], return_type: HulkType::Boolean,
+        });
+        m.insert("current".into(), FuncSignature {
+            params: vec![], return_type: HulkType::Object,
+        });
+        m
+    },
+});
+\end{lstlisting}
+
+El tipo \code{Range} se registra a continuación como tipo predefinido, con
+implementaciones concretas de los dos métodos que refinan los tipos de
+retorno del protocolo gracias a la regla de covarianza ya discutida: la
+firma \code{Range::current(): Number} es admisible como implementación de
+\code{Iterable::current(): Object} porque \code{Number} conforma con
+\code{Object}.
+
+El \textit{runtime} de \code{Range} consta de tres funciones expuestas con
+ABI~C. La representación en memoria es un bloque de 24~bytes con tres
+\code{f64} consecutivos: \code{start}, \code{end} y \code{current}.
+
+\begin{lstlisting}[style=rustst, caption={Runtime del tipo \code{Range}.}, label={lst:rt-range}]
+// Layout: [f64 start][f64 end][f64 current] (24 bytes, alineado a 8)
+// current arranca en start-1 para que el primer next() lo lleve a start.
+pub extern "C" fn hulk_range_alloc(start: f64, end: f64) -> *mut u8 {
+    let layout = Layout::from_size_align(24, 8).unwrap();
+    let ptr    = unsafe { alloc(layout) } as *mut f64;
+    unsafe { *ptr = start; *ptr.add(1) = end; *ptr.add(2) = start - 1.0; }
+    ptr as *mut u8
+}
+
+// Avanza current y devuelve si current < end.
+pub extern "C" fn hulk_range_next(range: *mut u8) -> bool {
+    let ptr = range as *mut f64;
+    unsafe { *ptr.add(2) += 1.0; *ptr.add(2) < *ptr.add(1) }
+}
+
+// Devuelve el valor actual del iterador.
+pub extern "C" fn hulk_range_current(range: *mut u8) -> f64 {
+    unsafe { *(range as *const f64).add(2) }
+}
+\end{lstlisting}
+
+La inicialización de \code{current} a $\code{start}-1$ es un truco clásico
+de iteradores que permite implementar la regla \emph{``\code{next} avanza
+antes de devolver''} sin un caso especial para la primera invocación: la
+primera llamada a \code{next} lleva \code{current} de $\code{start}-1$ a
+\code{start} y devuelve \code{true} si el rango es no vacío. La invariante
+mantenida tras toda invocación de \code{next} es que \code{current} apunta
+al elemento que la próxima invocación de \code{current} devolverá. Si
+\code{next} retorna \code{false}, el contenido de \code{current} es
+indefinido pero el cliente no debe leerlo (es invariante del protocolo, no
+del \emph{runtime}).
+
+\subsection{La anotación \code{T*} y la transpilación del \code{for}-loop}
+
+La anotación \code{Number*} ---y, en general, \code{T*} para cualquier
+\code{T}--- se reconoce en la gramática como una producción adicional del
+no-terminal \code{TypeName}:
+
+\begin{lstlisting}[style=bnf]
+TypeName -> Identifier '*'
+\end{lstlisting}
+
+El parser construye un nodo del AST con la variante específica para
+iterables, y el resolutor de tipos del verificador la traduce a
+\code{HulkType::Protocol("Iterable")}, \emph{descartando deliberadamente la
+información del tipo de elemento}:
+
+\begin{lstlisting}[style=rustst]
+TypeName::Iterable { .. } => HulkType::Protocol("Iterable".into()),
+\end{lstlisting}
+
+Esta pérdida de información es deliberada: un parámetro de tipo
+\code{Number*} se compromete a aceptar cualquier iterable, sin discriminar
+por tipo de elemento. La consecuencia es que dentro del cuerpo de la
+función no es posible asumir que el elemento es \code{Number}: el
+verificador trata todos los elementos como \code{Object} y exige
+conversiones explícitas (\code{as}) cuando se requiere refinamiento. Si el
+programador quiere preservar la información del elemento, debe usar la
+anotación \code{Number[]} (vector de \code{Number}), discutida en
+\cref{sec:ext-vec}.
+
+\paragraph{Transpilación del \code{for}.}
+El ciclo \code{for (x in iter) body} es azúcar sintáctico sobre el
+\code{while} con \code{next} y \code{current}. Nuestra implementación
+respeta el espíritu de esta equivalencia pero la materializa en la fase de
+\emph{generación de código} y no en la fase sintáctica. Hay dos razones para
+esta decisión:
+
+\begin{enumerate}
+  \item \textbf{Preservación de información para diagnóstico}: si el
+    \code{for} se desazucarara en el parser, los mensajes de error
+    posteriores hablarían de \code{while}, \code{next} y \code{current}
+    en lugares donde el programador escribió \code{for} y \code{in}. La
+    información del nodo original se perdería.
+  \item \textbf{Especialización por tipo}: cuando el iterable es un
+    \code{Range} o un \code{Vector}, conocemos el tipo concreto y podemos
+    emitir código especializado: aritmética directa de coma flotante para
+    \code{Range}, indexación entera para \code{Vector}. La transpilación
+    sintáctica obligaría a usar siempre el despacho indirecto a través del
+    protocolo, incluso cuando es innecesario.
+\end{enumerate}
+
+El generador de código para el nodo de bucle \code{for} detecta si el
+iterable es un \code{Range} o un \code{Vector} y emite uno de dos patrones
+distintos. Para un \code{Range}, el patrón emitido es:
+
+\begin{lstlisting}[style=llvmst, caption={IR generado para \code{for (x in range(s, e))}.}, label={lst:for-range}]
+  %iter   = call ptr @hulk_range_alloc(double %s, double %e)
+  br label %for_cond
+for_cond:
+  %has    = call i1 @hulk_range_next(ptr %iter)
+  br i1 %has, label %for_body, label %for_end
+for_body:
+  %x      = call double @hulk_range_current(ptr %iter)
+  store double %x, ptr %x_slot
+  ; ... <emite el cuerpo, con x visible en el scope> ...
+  br label %for_cond
+for_end:
+\end{lstlisting}
+
+Para un \code{Vector<T>}, el patrón emitido sustituye \code{hulk\_range\_next}
+y \code{hulk\_range\_current} por una comparación directa
+\code{i32 idx < size} y una llamada a \code{hulk\_vec\_get} con el índice
+incrementado en cada iteración. Esta especialización elimina dos llamadas a
+función por iteración a cambio de emitir dos patrones distintos en el
+generador de código ---un compromiso razonable dada la frecuencia de uso de
+los dos casos.
+
+\subsection{Vectores como iterables}
+
+Los vectores implementan el protocolo \code{Iterable}, pero en nuestra
+implementación esta conformidad se realiza de forma \emph{ad hoc} y no a
+través del mecanismo general de conformidad estructural: el verificador de
+tipos trata el caso \code{Vector(T)} especialmente al analizar un
+\code{for}, extrayendo el tipo de elemento \code{T} sin consultar al
+sistema de protocolos.
+
+La razón es eficiencia. Si los vectores conformaran con \code{Iterable} a
+través de la implementación de \code{next} y \code{current} como métodos
+ordinarios, cada iteración pagaría una llamada de método virtual con su
+despacho de \emph{vtable}, además del coste del propio acceso al elemento.
+El tratamiento especial permite emitir, para los vectores, el mismo patrón
+que para los \code{Range}: comparación directa contra el tamaño y obtención
+del puntero a la celda con una sola llamada al \textit{runtime}.
+
+\subsection{Análisis comparativo}
+
+El protocolo de iteración con \code{next/current} (estilo cursor mutante)
+es una de las dos grandes familias del diseño de iteradores. La otra
+---usada por Rust, Java desde la versión 8 y los \emph{stream operators}
+de C\#--- es \code{next() -> Option<T>}: una sola llamada por iteración que
+combina el avance del cursor y la lectura del elemento, devolviendo
+\code{None} cuando no quedan más.
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de protocolos de iteración.}
+\label{tab:iter-lang}
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textsc{Lenguaje} & \textsc{Métodos} & \textsc{Modelo} \\
+\midrule
+HULK     & \code{next(): Boolean} y \code{current(): T}        & Cursor mutante \\
+Java     & \code{hasNext(): bool} y \code{next(): T}            & Cursor mutante (avance en \code{next}) \\
+Python   & \code{\_\_next\_\_(): T} (lanza \code{StopIteration}) & Excepción terminadora \\
+Rust     & \code{next(): Option<Self::Item>}                  & Suma de tipos \\
+C\#      & \code{MoveNext(): bool} y \code{Current: T}          & Cursor mutante \\
+Go       & \code{for k, v := range iterable}                  & Compilador interno \\
+C++      & Iteradores con \code{operator++}, \code{operator*}  & Aritmética de punteros \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La elección de \hulk{} ---dos métodos, \code{next} avanza y devuelve si
+queda, \code{current} lee el valor actual--- coincide con la convención de
+C\#~(\code{IEnumerator}). Es ligeramente menos elegante que el modelo Rust
+de \code{Option<T>} porque exige dos llamadas por iteración en lugar de
+una y deja indefinido el comportamiento de \code{current} cuando
+\code{next} ha devuelto \code{false}. A cambio, no requiere un tipo suma
+en el sistema de tipos del lenguaje (\hulk{} no tiene tipos suma de primer
+nivel ni \code{Option}/\code{Result}), por lo que el modelo Rust no es
+transferible sin antes diseñar e implementar dichos constructores.
+
+\subsection{Decisiones de diseño}
+
+\paragraph{Por qué \code{current} y no \code{value}.}
+El verbo elegido para la lectura del elemento es \code{current}, no
+\code{value} o \code{get}. La razón es semántica: \emph{``current''}
+sugiere que el iterador tiene un \emph{estado actual} y que la llamada es
+idempotente; \emph{``value''} o \emph{``get''} sugerirían que cada llamada
+podría consumir el elemento. Con la regla de que \code{next} avanza y
+\code{current} sólo lee, dos invocaciones consecutivas de \code{current}
+sin \code{next} intercalado retornan el mismo valor.
+
+\paragraph{Por qué \code{Object} como tipo de retorno declarado en el
+protocolo.}
+El protocolo declara \code{current(): Object} y deja al tipo concreto
+\code{Range} declarar \code{current(): Number} (covarianza). La alternativa
+sería parametrizar el protocolo, \code{Iterable<T>}, como hace Java con
+\code{Iterable<T>}. La razón por la que \hulk{} no lo hace es la ausencia
+de polimorfismo paramétrico de primer nivel en el lenguaje: no existe la
+sintaxis \code{protocol Iterable<T> \{ ... \}}. La parametricidad se
+recupera por la vía de la covarianza más el tipado nominal puntual: cada
+tipo iterable redefine \code{current} con el tipo de elemento concreto y
+los clientes que necesitan el tipo refinado usan la anotación nominal
+(\code{Range} o \code{Vector<Number>}) en lugar de la genérica
+(\code{Number*}).
+
+\paragraph{Por qué el \code{for} se desazucara en codegen y no en el parser.}
+Discutida en el cuerpo de la subsección anterior: preservación de
+información de diagnóstico y posibilidad de especialización por tipo
+concreto del iterable.
+
+% ───────────────────────────────────────────────────────────────────────────
+\section{Vectores: del literal a la alocación dimensionada}
+\label{sec:ext-vec}
+% ───────────────────────────────────────────────────────────────────────────
+
+\subsection{Motivación}
+
+Los vectores son colecciones homogéneas indexables y de tamaño fijo, el
+sustrato sobre el que se construyen la mayoría de los algoritmos
+elementales del lenguaje. La forma básica del lenguaje admite dos
+construcciones para crearlos ---el literal explícito $[e_1, e_2, \ldots,
+e_n]$ y la expresión generadora $[\text{expr} \mid x \in
+\text{iterable}]$---, anotación de tipo mediante \code{T[]} y dos
+operaciones \emph{built-in}: indexación con \code{v[i]} y consulta de
+tamaño con \code{v.size()}. Los vectores implementan implícitamente el
+protocolo iterable para permitir su uso con el ciclo \code{for}.
+
+Nuestra implementación cubre las dos formas básicas y enriquece el sistema
+con tres construcciones adicionales:
 
 \begin{itemize}
-  \item agrega \textbf{indexación} con la sintaxis \code{v[i]} y verificación de
-    limites en \textit{runtime};
-  \item integra los vectores con el \textbf{protocolo \code{Iterable}}, permitiendo
-    usarlos en \code{for} igual que los rangos;
-  \item define el \textbf{tipo \code{Vector<T>}} en el sistema de tipos con
-    inferencia bidireccional;
-  \item proporciona un \textbf{runtime con bounds-checking} que aborta de forma
-    controlada en accesos invalidos.
+  \item \textbf{Sintaxis alternativa con llaves}: $\{e_1, e_2, e_3\}$ como
+    equivalente sintáctico de $[e_1, e_2, e_3]$.
+  \item \textbf{Alocación dimensionada}: \code{new T[N]} ---reserva un
+    buffer de tamaño $N$ pre-inicializado al cero del tipo--- y la
+    variante \code{new T[N]\{ i -> e \}}, que liga el índice del elemento
+    al identificador $i$ y evalúa la expresión $e$ en cada posición.
+  \item \textbf{Vectores bidimensionales}: anotación \code{T[][]} y
+    constructor \code{new T[][N]}.
 \end{itemize}
 
-\section{Definición formal de la sintaxis}
+Estas construcciones cubren patrones de programación elementales que la
+sintaxis básica maneja con incomodidad: la inicialización de un buffer de
+$N$ ceros requeriría escribir \code{[0 | i in range(0, N)]} con la
+sobrecarga del \code{Range} intermedio; la inicialización de una matriz
+identidad requeriría un bucle anidado de asignaciones destructivas. Más
+crítico todavía, los tests de la suite de validación del compilador exigen
+estas construcciones; sin ellas, una parte significativa del CI quedaría
+sin pasar.
 
-La extensión agrega tres construcciones sintácticas nuevas a la gramática de
-\hulk{}: el vector explicito, la expresión generadora y la indexación.
+\subsection{El tipo \code{Vector<T>} en el sistema de tipos}
 
-\begin{lstlisting}[style=bnf, caption={Nuevas producciones gramaticales para la
-  extensión.}, label={lst:gram-vec}]
-(* Atom es extendido con vectores literales *)
-Atom        -> ... | VectorLiteral
+El sistema de tipos representa los vectores con un constructor paramétrico
+de primer nivel, \code{HulkType::Vector(Box<HulkType>)}, donde el parámetro
+es el tipo del elemento. La conformidad de vectores es \emph{invariante} en
+el parámetro: $\code{Vector<A>} \leq \code{Vector<B>}$ si y sólo si
+$A = B$. Esta elección es la única estable en presencia de mutación: un
+\code{Vector<Animal>} no puede aceptar un \code{Vector<Perro>} aunque
+\code{Perro} conforme con \code{Animal} porque escribir un \code{Animal}
+en la posición de un \code{Perro} es una violación de tipos en tiempo de
+ejecución (el problema clásico de Java con la covarianza de arreglos,
+documentado por Bracha y Cook~\cite{bracha1990}).
 
-VectorLiteral -> '[' ']'                                     (* vector vacio *)
-              | '[' ArgListNonEmpty ']'                       (* explicito *)
-              | '[' Expr '|' IDENTIFIER 'in' Expr ']'         (* generador *)
+\subsection{Formas de construcción}
+\label{subsec:formas-vec}
 
-(* Postfix es extendido con indexación *)
-Postfix     -> Atom (... | '[' Expr ']')*                     (* indexación *)
+A continuación describimos las cinco formas sintácticas que el compilador
+admite para construir un vector, presentándolas en orden creciente de
+especificidad.
+
+\paragraph{Literal explícito con corchetes:
+$[e_1, e_2, \ldots, e_n]$.}
+La forma básica del lenguaje. La gramática admite tres variantes: vector
+vacío $[\,]$, vector con elementos $[\text{ArgListNonEmpty}]$ y la forma
+generadora descrita más abajo. El parser construye un nodo
+\code{VectorExpr::Explicit \{ elements, span \}}. El verificador de tipos
+infiere el tipo del primer elemento como ``tipo candidato'' del vector y
+verifica que los demás conformen con él.
+
+\paragraph{Literal explícito con llaves: $\{e_1, e_2, \ldots, e_n\}$.}
+Una construcción nuestra ---no recogida en la forma básica del lenguaje---
+pero familiar para el programador con experiencia en C, C++ y Java: la
+sintaxis de \emph{aggregate initializer}. La producción reduce
+$\{\,\text{Expr}\,,\,\text{ArgListNonEmpty}\,\}$ al mismo nodo
+\code{VectorExpr::Explicit} que construyen los corchetes. La equivalencia
+es exacta: el árbol sintáctico abstracto resultante es indistinguible.
+
+La producción \emph{exige una coma inicial obligatoria} (de ahí la forma
+$\text{Expr}, \text{ArgListNonEmpty}$ en lugar de la natural
+$\text{ArgListNonEmpty}$). La razón es la coexistencia con la producción
+del bloque de expresiones $\{ s_1; s_2; \ldots; s_n \}$, que también
+comienza con una llave seguida de una expresión. Sin la coma obligatoria,
+el parser LALR(1) sufre un conflicto \emph{shift/reduce} no resoluble con
+un único token de \emph{lookahead}: tras consumir \code{\{ Expr}, la
+decisión entre vector y bloque exige inspeccionar el \emph{tercer} símbolo
+(coma frente a punto y coma), lo que excede la capacidad de LALR(1). Al
+obligar la coma como tercer símbolo de la producción del vector, la
+decisión se vuelve local: si tras \code{Expr} hay una coma, es un vector;
+si hay un punto y coma o una llave de cierre, es un bloque. El precio que
+se paga es la inexistencia de las formas $\{x\}$ (unitaria) y $\{\,\}$
+(vacía); el programador que las necesite debe usar corchetes.
+
+\paragraph{Expresión generadora: $[\text{body} \mid x \in \text{iterable}]$.}
+La forma para construir un vector cuyo elemento $i$-ésimo se calcula
+evaluando \code{body} con $x$ ligado al $i$-ésimo elemento del iterable.
+Es la pieza central de la extensión de vectores y reproduce la notación de
+construcción de conjuntos de la teoría axiomática: $S = \{ f(x) \mid x \in
+A \}$. La barra vertical $\vert$ coincide con el operador OR lógico, lo
+que introduce un conflicto \emph{shift/reduce} en la tabla LALR(1) cuando
+el cuerpo del generador contiene una subexpresión que podría continuar
+como OR; el conflicto se resuelve con un \emph{lookahead} adicional de dos
+tokens, inspeccionando si tras $\vert$ viene \code{IDENTIFIER in}.
+
+El verificador de tipos abre un \emph{scope} con $x$ tipado según el tipo
+del elemento del iterable (\code{Number} si el iterable es \code{Range};
+$T$ si es \code{Vector<T>}) y devuelve \code{Vector<T'>} donde $T'$ es el
+tipo del cuerpo.
+
+\paragraph{Alocación dimensionada: \code{new T[N]}.}
+Una construcción nuestra, exigida por los tests del compilador. Aloca un
+buffer de $N$ elementos pre-inicializados al \emph{valor por defecto} del
+tipo $T$: cero para \code{Number} y \code{Boolean}, \code{null} para
+tipos puntero (cadenas, objetos, vectores anidados). La gramática extiende
+el no-terminal \code{NewExpr} con la producción correspondiente:
+
+\begin{lstlisting}[style=bnf]
+NewExpr -> 'new' Identifier '[' Expr ']'
 \end{lstlisting}
 
-\subsection{Vectores explicitos}
+Nótese que la producción usa \code{Identifier} directamente y no el
+no-terminal \code{TypeName}. La razón es de nuevo LALR(1): si la
+producción admitiera \code{TypeName}, el parser tendría que decidir entre
+dos lecturas al ver \code{new Number[}: o bien \code{TypeName(Number[])}
+continuado por \code{N}, o bien \code{Identifier(Number)} continuado por
+\code{[N]}. La forma con \code{Identifier} evita la ambigüedad localmente.
 
-Un \textbf{vector explicito} se construye listando sus elementos entre corchetes,
-separados por comas. El tipo del vector se infiere a partir del tipo de sus
-elementos.
+El parser construye un nodo de la nueva variante \code{VectorExpr::Alloc
+\{ elem\_type, size, generator: None, span \}}.
 
-\begin{lstlisting}[style=hulkst,caption={Vectores explicitos.}]
-let v     = [1, 2, 3, 4, 5]               in print(v[2]);   // 3
-let names = ["Alice", "Bob", "Carol"]     in print(names[0]);
-let empty = []                            in print(size(empty)); // 0
+\paragraph{Alocación con generador por índice: \code{new T[N]\{ i -> e \}}.}
+Refinamiento de la forma anterior: el identificador $i$ se liga al índice
+de cada elemento (no a un valor extraído de un iterable) y la expresión
+$e$ se evalúa en cada posición. Es la sintaxis canónica para inicializar
+un vector con un patrón dependiente del índice ---tablas de potencias,
+vectores de muestras de una función, vectores indicadores \emph{one-hot},
+filas de una matriz identidad. La producción tiene diez símbolos:
+
+\begin{lstlisting}[style=bnf]
+NewExpr -> 'new' Identifier '[' Expr ']' '{' Identifier '->' Expr '}'
 \end{lstlisting}
 
-\subsection{Expresiones generadoras}
+Construye el mismo nodo \code{VectorExpr::Alloc} de la forma anterior, con
+el campo \code{generator} igual a \code{Some((var, body))}.
 
-La sintaxis central de la extensión es la \textbf{expresión generadora}, que crea
-un nuevo vector aplicando una expresión a cada elemento de un iterable.
+\subsection{Anotaciones de tipo: \code{T[]} y \code{T[][]}}
 
-\begin{lstlisting}[style=hulkst,caption={Expresiones generadoras.}]
-// Cuadrados de 0 a 4
-let squares = [x * x | x in range(0, 5)] in
-print(squares[3]);                                 // 9
+La sintaxis \code{T[]} declara una anotación de tipo \emph{vector de
+\code{T}}, mediante una producción simple de tres símbolos:
 
-// Transformación de otro vector
-let v       = [1, 2, 3]                  in
-let doubled = [x * 2 | x in v]           in
-print(doubled[1]);                                 // 4
-
-// El cuerpo puede usar variables del entorno
-let factor = 10 in
-let scaled = [x * factor | x in range(1, 4)] in
-print(scaled[2]);                                  // 30
+\begin{lstlisting}[style=bnf]
+TypeName -> Identifier '[' ']'
 \end{lstlisting}
 
-La sintaxis es \code{[body | var in iterable]}, donde:
-\begin{itemize}
-  \item \code{body} es cualquier expresión \hulk{} que puede usar \code{var} y
-    variables del entorno circundante;
-  \item \code{var} es la variable de iteración, local al cuerpo;
-  \item \code{iterable} es un \code{Range} o un \code{Vector<T>} de cualquier
-    tipo;
-  \item el separador \code{|} coincide con el del operador OR lógico; la
-    ambigüedad se resuelve por contexto (vease el conflicto declarado en la
-    gramática).
-\end{itemize}
+El AST lo representa con la variante \code{TypeName::Vector \{ name,
+span \}}, y el resolutor de tipos del verificador lo traduce a
+$\code{Vector<T>}$.
 
-\subsection{Indexación}
+La sintaxis \code{T[][]} ---añadida por nosotros--- extiende la anotación
+a vectores de dos niveles. La producción admite cinco símbolos:
 
-Los elementos de un vector se acceden con la sintaxis \code{v[i]}, donde \code{i}
-es una expresión de tipo \code{Number}.
-
-\begin{lstlisting}[style=hulkst,caption={Indexación con expresión calculada.}]
-let v = [10, 20, 30]                                  in
-let i = 1                                              in
-v[i + 1]   // equivalente a v[2] = 30
+\begin{lstlisting}[style=bnf]
+TypeName -> Identifier '[' ']' '[' ']'
 \end{lstlisting}
 
-El indice se convierte de \code{Number} (\textit{double}) a entero en tiempo de
-compilación mediante \code{fptosi}. El \textit{runtime} verifica que el indice sea
-no-negativo y menor que el tamaño del vector; en caso contrario, aborta con un
-mensaje descriptivo.
+El AST introduce una variante específica \code{TypeName::Vector2D \{ name,
+span \}}, pero el sistema de tipos \emph{no} introduce un nuevo
+constructor: el resolutor traduce \code{Vector2D} a la composición
+$\code{Vector<Vector<T>>}$ del constructor de primer nivel consigo mismo:
 
-\section{Definición formal de la semántica}
+\begin{lstlisting}[style=rustst]
+TypeName::Vector2D { name, .. } => {
+    HulkType::Vector(Box::new(
+        HulkType::Vector(Box::new(self.name_to_hulk_type(name)))
+    ))
+},
+\end{lstlisting}
 
-Para precisar el significado de las nuevas construcciones, se presentan las
-reglas de tipado y la semántica operacional en estilo natural.
+Esta composicionalidad tiene una consecuencia importante: el verificador
+de tipos, el generador de código y el \textit{runtime} no requieren
+ninguna modificación para soportar vectores bidimensionales. El soporte se
+reduce a una traducción de tipos en la fase de análisis sintáctico, y el
+resto del compilador trata $\code{Vector<Vector<T>>}$ con el mismo código
+que trata cualquier $\code{Vector<X>}$. El constructor \code{new T[][N]}
+reduce a \code{VectorExpr::Alloc} con $\code{elem\_type} = \code{Vector(T)}$
+y por tanto genera código idéntico al de \code{new (Vector<T>)[N]}: aloca
+un buffer de $N$ punteros pre-inicializados a \code{null}, lo que en
+términos prácticos significa \emph{filas no inicializadas}.
 
-\subsection{Reglas de tipado}
+El modelo subyacente es, en la terminología habitual de Java y C\#, un
+\emph{jagged array}: un vector de punteros, cada uno apuntando a un vector
+independiente que puede tener un tamaño distinto. La alternativa
+---\emph{rectangular array}, un único bloque contiguo accedido con
+aritmética de índices $i \cdot \text{cols} + j$--- ofrecería mejor
+localidad de caché para algoritmos densamente numéricos pero requeriría
+un nuevo \code{HulkType} y un layout de \textit{runtime} separado. Nuestra
+elección por el modelo \emph{jagged} es consistente con el principio
+rector del capítulo: no introducir nuevos constructores en el sistema de
+tipos si la operación es expresable como composición de los existentes.
 
-\begin{definition}[title={Definición: tipos de la extensión}]
-Se introduce un nuevo constructor de tipos \code{Vector<T>} paramétrico en un
-parámetro \code{T}. La conformidad de vectores es \textbf{invariante} en el
-parámetro: $\code{Vector<A>} \leq \code{Vector<B>} \iff A = B$.
-\end{definition}
+\subsection{Indexación, mutación y el método \code{size}}
 
-Las reglas de tipado para las nuevas expresiones son las siguientes, donde
-$\Gamma$ es el ambiente de tipos y $\vdash$ denota el juicio de tipado:
+La indexación de un vector se reconoce por una producción compartida con
+la indexación de cualquier expresión postfija:
+
+\begin{lstlisting}[style=bnf]
+CallOrAccess -> CallOrAccess '[' Expr ']'
+\end{lstlisting}
+
+El verificador exige que la colección sea \code{Vector<T>} y el índice sea
+\code{Number}; devuelve \code{T} como tipo de la expresión.
+
+La indexación en posición de \emph{lvalue} ---\code{v[i] := e}--- se
+admite en la asignación destructiva. La rama del generador de código para
+la indexación en posición de lvalue construye el puntero a la celda
+mediante el accesor del \textit{runtime} y emite un \code{store} con el
+valor calculado.
+
+El método \code{size} se distingue del resto en que el verificador y el
+generador de código lo \emph{interceptan} en el receptor \code{Vector<T>}
+sin pasar por el mecanismo de despacho de protocolos. El verificador
+reconoce el caso \code{Vector(\_).size()} y devuelve \code{Number}; el
+generador de código emite una llamada directa a la función de \textit{runtime}
+\code{hulk\_vec\_size}.
+
+\subsection{Representación en \textit{runtime} y verificación de límites}
+
+El \textit{runtime} de vectores usa un layout simple: una cabecera de
+8~bytes con el número de elementos seguida de las celdas de datos, cada
+una de 8~bytes ---suficiente para almacenar un \code{f64}, un \code{i64} o
+un puntero. La función de alocación usa \code{alloc\_zeroed} para que el
+buffer venga pre-inicializado al patrón binario cero, que es
+semánticamente cero para \code{Number} y \code{Boolean} y \code{null} para
+tipos puntero:
+
+\begin{lstlisting}[style=rustst, caption={Runtime de vectores: alocación, indexación, tamaño.}, label={lst:rt-vec}]
+// Layout: [i64 count][f64/ptr elem0][f64/ptr elem1]...
+pub extern "C" fn hulk_vec_alloc(count: i32, _element_size: i32) -> *mut u8 {
+    let n      = count.max(0) as usize;
+    let layout = Layout::from_size_align(8 + n * 8, 8).unwrap();
+    let ptr    = unsafe { alloc_zeroed(layout) };
+    unsafe { *(ptr as *mut i64) = n as i64; }
+    ptr
+}
+
+// Devuelve puntero a la celda i; aborta si i fuera de rango.
+pub extern "C" fn hulk_vec_get(vec: *mut u8, index: i32, _element_size: i32) -> *mut u8 {
+    let size = unsafe { *(vec as *const i64) };
+    if index < 0 || (index as i64) >= size {
+        eprintln!("HULK error en tiempo de ejecucion: indice {} fuera de rango [0, {})", index, size);
+        std::process::abort();
+    }
+    unsafe { vec.add(8 + (index as usize) * 8) }
+}
+
+pub extern "C" fn hulk_vec_size(vec: *mut u8) -> f64 {
+    unsafe { *(vec as *const i64) as f64 }
+}
+\end{lstlisting}
+
+La verificación de límites en \code{hulk\_vec\_get} es estricta: si el
+índice está fuera de $[0, \text{count})$, el \textit{runtime} imprime un
+mensaje descriptivo en \code{stderr} y aborta el proceso mediante
+\code{std::process::abort}. Esta política sigue el principio de
+Hoare~\cite{hoare1985}: \emph{una condición que no debería ocurrir no debe
+producir un valor arbitrario; debe detener la ejecución de la manera más
+visible posible}.
+
+\subsection{Reglas de tipado formales}
+
+Para las cinco formas de construcción descritas, las reglas de tipado del
+verificador son las siguientes, donde $\Gamma$ es el ambiente de tipos y
+$\vdash$ denota el juicio de tipado:
 
 \begin{align*}
   & \frac{\Gamma \vdash e_1 : T \quad \cdots \quad \Gamma \vdash e_n : T}
          {\Gamma \vdash [e_1, \ldots, e_n] : \code{Vector<T>}}
-  & \text{(vector explicito)} \\[8pt]
-  & \frac{\Gamma \vdash e : \code{Range} \quad \Gamma, x : \code{Number} \vdash b : T}
-         {\Gamma \vdash [b \mid x \text{ in } e] : \code{Vector<T>}}
-  & \text{(generador sobre rango)} \\[8pt]
-  & \frac{\Gamma \vdash e : \code{Vector<S>} \quad \Gamma, x : S \vdash b : T}
-         {\Gamma \vdash [b \mid x \text{ in } e] : \code{Vector<T>}}
-  & \text{(generador sobre vector)} \\[8pt]
-  & \frac{\Gamma \vdash e : \code{Vector<T>} \quad \Gamma \vdash i : \code{Number}}
+    & \text{(literal explícito, corchetes o llaves)} \\[6pt]
+  & \frac{\Gamma \vdash e : \code{Range} \quad
+          \Gamma, x : \code{Number} \vdash b : T}
+         {\Gamma \vdash [b \mid x \,\text{in}\, e] : \code{Vector<T>}}
+    & \text{(generador sobre rango)} \\[6pt]
+  & \frac{\Gamma \vdash e : \code{Vector<S>} \quad
+          \Gamma, x : S \vdash b : T}
+         {\Gamma \vdash [b \mid x \,\text{in}\, e] : \code{Vector<T>}}
+    & \text{(generador sobre vector)} \\[6pt]
+  & \frac{\Gamma \vdash n : \code{Number}}
+         {\Gamma \vdash \texttt{new}\ T[n] : \code{Vector<T>}}
+    & \text{(alocación dimensionada)} \\[6pt]
+  & \frac{\Gamma \vdash n : \code{Number} \quad
+          \Gamma, x : \code{Number} \vdash b : S \quad S \leq T}
+         {\Gamma \vdash \texttt{new}\ T[n]\{x \rightarrow b\} : \code{Vector<T>}}
+    & \text{(alocación con generador)} \\[6pt]
+  & \frac{\Gamma \vdash e : \code{Vector<T>} \quad
+          \Gamma \vdash i : \code{Number}}
          {\Gamma \vdash e[i] : T}
-  & \text{(indexación)}
+    & \text{(indexación)}
 \end{align*}
 
-\subsection{Semántica operacional de gran paso}
+\subsection{Semántica operacional}
 
-La semántica de evaluación de los vectores y de los generadores adopta una
-estrategia \textbf{ansiosa} (\textit{eager}): todos los elementos se calculan en
-orden de izquierda a derecha y se almacenan en un buffer recién asignado
-\emph{antes} de que la expresión completa retorne. Esta elección está alineada
-con la semántica del resto de \hulk{} ---donde los argumentos de funciones, los
-lados de los operadores binarios y los inicializadores de \code{let} se evalúan de
-forma estricta--- y se justifica con detalle en la \cref{sec:decisiones-ext}.
+La semántica operacional adopta una estrategia \textbf{ansiosa}
+(\textit{eager}): todos los elementos se calculan en orden de izquierda a
+derecha y se almacenan en un buffer recién asignado \emph{antes} de que la
+expresión completa retorne. Esta elección está alineada con la semántica
+del resto de \hulk{} ---donde los argumentos de funciones, los lados de
+los operadores binarios y los inicializadores de \code{let} se evalúan de
+forma estricta--- y se justifica con detalle en la discusión de
+decisiones de diseño.
 
-Se presenta la semántica en estilo de \textit{gran paso} (también llamada
-\textit{natural} o \textit{evaluativa}): el juicio
-$\sigma \vdash e \Downarrow v,\,\sigma'$ se lee \textit{``en el entorno $\sigma$,
-la expresión $e$ se evalúa al valor $v$ produciendo el entorno $\sigma'$''}. El
-entorno $\sigma$ asocia variables a valores, y $\sigma[x \mapsto v]$ denota la
-extensión que añade el binding $x \mapsto v$ ocultando cualquier binding previo.
+Se presenta la semántica en estilo de \emph{gran paso}: el juicio
+$\sigma \vdash e \Downarrow v,\,\sigma'$ se lee \emph{``en el entorno
+$\sigma$, la expresión $e$ se evalúa al valor $v$ produciendo el entorno
+$\sigma'$''}. Las cinco formas de construcción y la indexación dan lugar
+a las siguientes reglas:
 
 \begin{small}
 \[
@@ -1895,24 +2645,38 @@ extensión que añade el binding $x \mapsto v$ ocultando cualquier binding previ
   }{
     \sigma \vdash [b \mid x \,\text{in}\, e] \Downarrow \mathsf{vec}(w_1, \ldots, w_n),\,\sigma_n
   }
-  \tag{E-VecGenV}
+  \tag{E-VecGen}
 \]
 
 \[
   \frac{
-    \sigma \vdash e \Downarrow \mathsf{range}(s, t),\,\sigma_0 \quad
-    n = \max(0,\, \lfloor t - s \rfloor) \quad
-    \forall i \in [0,n).\ \sigma_0[x \mapsto s + i] \vdash b \Downarrow w_i
+    \sigma \vdash n \Downarrow k,\,\sigma_0 \quad
+    k' = \max(0, \lfloor k \rfloor)
   }{
-    \sigma \vdash [b \mid x \,\text{in}\, e] \Downarrow \mathsf{vec}(w_0, \ldots, w_{n-1}),\,\sigma_n
+    \sigma \vdash \texttt{new}\ T[n] \Downarrow
+    \mathsf{vec}(\underbrace{0_T, \ldots, 0_T}_{k'\text{ veces}}),\,\sigma_0
   }
-  \tag{E-VecGenR}
+  \tag{E-VecAlloc}
+\]
+
+\[
+  \frac{
+    \sigma \vdash n \Downarrow k,\,\sigma_0 \quad
+    k' = \max(0, \lfloor k \rfloor) \quad
+    \forall i \in [0, k').\
+      \sigma_0[x \mapsto i] \vdash b \Downarrow w_i
+  }{
+    \sigma \vdash \texttt{new}\ T[n]\{x \rightarrow b\} \Downarrow
+    \mathsf{vec}(w_0, \ldots, w_{k'-1}),\,\sigma_0
+  }
+  \tag{E-VecAllocGen}
 \]
 
 \[
   \frac{
     \sigma \vdash e \Downarrow \mathsf{vec}(v_0, \ldots, v_{n-1}),\,\sigma_0 \quad
-    \sigma_0 \vdash i \Downarrow k,\,\sigma_1 \quad 0 \leq \lfloor k \rfloor < n
+    \sigma_0 \vdash i \Downarrow k,\,\sigma_1 \quad
+    0 \leq \lfloor k \rfloor < n
   }{
     \sigma \vdash e[i] \Downarrow v_{\lfloor k \rfloor},\,\sigma_1
   }
@@ -1922,7 +2686,8 @@ extensión que añade el binding $x \mapsto v$ ocultando cualquier binding previ
 \[
   \frac{
     \sigma \vdash e \Downarrow \mathsf{vec}(v_0, \ldots, v_{n-1}),\,\sigma_0 \quad
-    \sigma_0 \vdash i \Downarrow k,\,\sigma_1 \quad \lnot(0 \leq \lfloor k \rfloor < n)
+    \sigma_0 \vdash i \Downarrow k,\,\sigma_1 \quad
+    \lnot(0 \leq \lfloor k \rfloor < n)
   }{
     \sigma \vdash e[i] \Downarrow \bot
   }
@@ -1930,101 +2695,52 @@ extensión que añade el binding $x \mapsto v$ ocultando cualquier binding previ
 \]
 \end{small}
 
-La regla \textsc{E-IndexErr} captura el comportamiento de aborto controlado del
-\textit{runtime}: cuando el índice está fuera de rango, no se produce un valor sino
-una transición a un estado de error (notado $\bot$) que el \textit{runtime}
-materializa imprimiendo un mensaje en \code{stderr} y llamando a \code{abort(3)}.
-Este modelo de fallos sigue el principio de Hoare según el cual \textit{una
-condición que no debería ocurrir no debe producir un valor arbitrario; debe
-detener la ejecución de la manera más visible posible}~\cite{hoare1985}.
+La regla \textsc{E-IndexErr} captura el comportamiento de aborto
+controlado del \textit{runtime}: un índice fuera de rango no produce un
+valor sino una transición al estado de error $\bot$, que el
+\textit{runtime} materializa imprimiendo un mensaje y deteniendo la
+ejecución. La denotación $0_T$ en \textsc{E-VecAlloc} es el valor por
+defecto del tipo $T$: $0$ para \code{Number}, \code{false} para
+\code{Boolean}, \code{null} para tipos puntero.
 
-\section{Realización en el código}
+\subsection{Generación de código para la forma generadora}
 
-\subsection{Modificaciones al lexer}
-
-Ninguna. Los tokens \code{[}, \code{]}, \code{|}, e \code{in} ya existen en el
-lexer para otras construcciones. La extensión reutiliza el conjunto existente sin
-agregar terminales.
-
-\subsection{Modificaciones al parser}
-
-Se agregan las producciones del \cref{lst:gram-vec}. El único conflicto
-shift/reduce nuevo aparece en \code{[Expr | }$\ldots$ porque el token \code{|}
-podria iniciar también el operador OR lógico de la regla \code{OrExpr}. El
-conflicto se resuelve con un \textit{lookahead} de dos tokens: si tras \code{|}
-viene un \code{IDENTIFIER} seguido de \code{in}, se reduce hacia
-\code{VectorLiteral}; en cualquier otro caso, se desplaza hacia \code{OrExpr}.
-
-El AST se extiende con dos variantes:
-
-\begin{lstlisting}[style=rustst, caption={Nuevas variantes del AST para la
-  extensión.}, label={lst:ast-vec}]
-pub enum VectorExpr {
-    Explicit  { elements: Vec<Expr>, span: Span },
-    Generator { body: Box<Expr>, var: String,
-                iterable: Box<Expr>, span: Span },
-}
-
-pub struct IndexExpr {
-    pub collection: Box<Expr>,
-    pub index:      Box<Expr>,
-    pub span:       Span,
-}
-\end{lstlisting}
-
-\subsection{Modificaciones al semántico}
-
-El verificador de tipos implementa las reglas de la sección anterior: para un
-vector explicito, infiere el tipo del primer elemento y verifica que los demas
-sean compatibles; para una expresión generadora, evalua el tipo del iterable y
-construye un ambiente extendido $\Gamma, x : T$ antes de tipar el cuerpo; para
-una indexación, verifica que la colección sea \code{Vector<T>} para algun \code{T}
-y que el indice sea \code{Number}.
-
-\subsection{Modificaciones al codegen}
-
-La generación de código para vectores explicitos es directa: una llamada a
-\code{hulk\_vec\_alloc} para reservar el buffer, seguida de una secuencia de
-\code{hulk\_vec\_get} (para obtener punteros a los slots) y \code{store} (para
-escribir los valores).
-
-La generación para una expresión generadora es mas elaborada y se ilustra en el
-\cref{fig:cfg-gen}: requiere construir un bucle con cuatro bloques básicos
-(\code{gen\_cond}, \code{gen\_body}, \code{gen\_end}, mas el bloque de entrada).
+La forma generadora ---tanto la versión \code{[b | x in iter]} como la
+versión \code{new T[N]\{ i -> b \}}--- requiere un bucle explícito en
+\llvm{}~IR. La estructura emitida consta de cuatro bloques básicos:
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
   every node/.style={font=\small},
   bb/.style={rectangle, draw=hulkblue, fill=hulkblue!8, rounded corners=2pt,
-    minimum width=4cm, minimum height=0.9cm, align=center},
+    minimum width=4.6cm, minimum height=0.9cm, align=center},
   arr/.style={-Stealth, thick, color=hulkblue}
 ]
-  \node[bb] (e)  {\textbf{entry}\\\scriptsize compute count, alloc result, init idx=0};
-  \node[bb] (c)  [below=of e] {\textbf{gen\_cond}\\\scriptsize idx < count?};
-  \node[bb] (b)  [below=of c, xshift=-2.5cm] {\textbf{gen\_body}\\\scriptsize
-    fetch elem, eval body, store, idx++};
-  \node[bb] (x)  [below=of c, xshift=2.5cm]  {\textbf{gen\_end}\\\scriptsize
-    return result};
+  \node[bb] (e)  {\textbf{entry}\\\scriptsize calcula count, aloca buffer, idx=0};
+  \node[bb] (c)  [below=of e] {\textbf{cond}\\\scriptsize idx < count?};
+  \node[bb] (b)  [below=of c, xshift=-2.6cm] {\textbf{body}\\\scriptsize
+    eval cuerpo, store, idx++};
+  \node[bb] (x)  [below=of c, xshift=2.6cm]  {\textbf{end}\\\scriptsize
+    retorna buffer};
   \draw[arr] (e) -- (c);
-  \draw[arr] (c) -- node[left]{si} (b);
+  \draw[arr] (c) -- node[left]{sí} (b);
   \draw[arr] (c) -- node[right]{no} (x);
   \draw[arr] (b.east) .. controls (3,-3) and (2,-1.5) .. (c.east);
 \end{tikzpicture}
-\caption{Grafo de flujo de control del código generado para una expresión
-  generadora.}
+\caption{Grafo de flujo de control del bucle emitido para una expresión
+  generadora o una alocación con generador por índice.}
 \label{fig:cfg-gen}
 \end{figure}
 
-Una sutileza importante: el calculo del \code{count} para un generador sobre un
-\code{Range} hace \code{count = floor(end - start)}. Sin precauciones, un rango con
-\code{start > end} produciria \code{count < 0}, lo que provocaria que la
-instrucción \code{fptosi} de \llvm{} generara un \textit{poison value} y el
-\textit{behavior undefined}. La extensión inserta un \textit{clamp} a
-$[0, \textsf{i32::MAX}]$:
+Una sutileza importante surge en el cálculo del \code{count} para un
+generador sobre un \code{Range}: \code{count = floor(end - start)}. Si
+\code{start > end}, el cálculo produce \code{count < 0}, lo que provoca
+que la instrucción \code{fptosi} de \llvm{} genere un \emph{poison value}
+y el \emph{undefined behavior} subsiguiente. La implementación inserta un
+\emph{clamp} a $[0, \texttt{i32::MAX}]$ antes del \code{fptosi}:
 
-\begin{lstlisting}[style=llvmst, caption={Clamp del count para evitar poison en
-  fptosi.}, label={lst:clamp}]
+\begin{lstlisting}[style=llvmst, caption={Clamp del count para evitar poison en fptosi.}]
 %diff   = fsub double %end, %start
 %is_neg = fcmp ult double %diff, 0.0
 %nn     = select i1 %is_neg, double 0.0, double %diff
@@ -2033,309 +2749,152 @@ $[0, \textsf{i32::MAX}]$:
 %count  = fptosi double %clamp to i32
 \end{lstlisting}
 
-\section{Análisis comparativo con otros lenguajes}
+\subsection{Análisis comparativo}
 
-La construcción implementada esta emparentada con una familia de construcciones
-presentes en otros lenguajes bajo nombres como \textit{list comprehension},
-\textit{for comprehension} o \textit{generator expression}. A continuación se
-compara la extensión propuesta con las equivalentes mas relevantes.
-
-\subsection{Notación matemática de conjuntos}
-
-La inspiración histórica de todas estas construcciones es la \textbf{notación de
-construcción de conjuntos} (\textit{set-builder notation}) introducida en la
-teoría axiomática de conjuntos a principios del siglo~XX:
-$$ S = \{ f(x) \mid x \in A \land P(x) \}. $$
-
-Esta notación, leída \textit{``el conjunto de los $f(x)$ tales que $x$ pertenece a
-$A$ y $P(x)$ se cumple''}, separa con una barra vertical la expresión generadora
-de los cuantificadores. La extensión propuesta toma directamente esta convención
-sintáctica: \code{[body | var in iterable]} es la traducción literal de la
-notación matemática al ASCII, con la barra vertical \code{|} como separador y el
-\textit{keyword} \code{in} en sustitución del símbolo $\in$. Es importante notar
-que la notación matemática puede tener \emph{cualquier} número de generadores y de
-predicados; la extensión que aquí se presenta admite, por simplicidad de la
-gramática LALR(1), exactamente un generador y ningún predicado. La omisión es
-deliberada (vease \cref{sec:decisiones-ext}) y la pérdida de expresividad es
-moderada porque cualquier filtro puede emularse insertando un \code{if-else} en el
-cuerpo de la comprensión.
-
-\subsection{Comparación con Python}
-
-Python distingue entre \textbf{list comprehensions} (\textit{eager}) y
-\textbf{generator expressions} (\textit{lazy}):
-
-\begin{lstlisting}[language=Python,style=base,caption={Comprehensions y generators
-  en Python.}]
-squares = [x**2 for x in range(5)]      # list comp, eager
-gen     = (x**2 for x in range(5))      # generator expr, lazy
-\end{lstlisting}
-
-La sintaxis de \hulk{} \code{[body | var in iterable]} corresponde a las
-\textit{list comprehensions} de Python tanto en comportamiento (eager,
-materializan toda la lista) como en semántica de alcance (\code{var} es local al
-cuerpo, no captura el contexto).
-
-Diferencias relevantes:
-
-\begin{itemize}
-  \item Python admite \textbf{filtros} (\code{if x > 0}) y \textbf{multiples
-    iteradores} (\code{for x in xs for y in ys}); la extensión de \hulk{} se
-    limita a un solo iterador sin filtro. Esta simplificación fue intencional:
-    mantiene la gramática LALR(1) libre de ambigüedades difíciles y reduce la
-    complejidad del codegen.
-  \item Python es dinámicamente tipado y permite vectores heterogeneos; \hulk{}
-    es estáticamente tipado e impone homogeneidad: todos los elementos deben
-    conformar al mismo tipo.
-\end{itemize}
-
-\subsection{Comparación con Haskell}
-
-Haskell ofrece \textit{list comprehensions} con una sintaxis aun mas cercana a la
-notación matemática:
-
-\begin{lstlisting}[language=Haskell,style=base,caption={List comprehensions en
-  Haskell.}]
-squares = [x^2 | x <- [0..4]]
-evens   = [x | x <- [1..100], even x]
-\end{lstlisting}
-
-La evaluación en Haskell es \textbf{perezosa por defecto}: los elementos se
-computan solo cuando son demandados. Esto permite construir listas infinitas como
-\code{nats = [0..]}, donde los valores se calculan incrementalmente.
-
-\hulk{} adopta evaluación \textbf{ansiosa}. Las razones de esta decisión se
-exponen en la \cref{sec:decisiones-ext}. El precio que se paga es la
-imposibilidad de manejar colecciones infinitas; el beneficio es un modelo de
-memoria y de ejecución mucho mas simple, compatible con el resto del lenguaje
-(que también es eager).
-
-\subsection{Comparación con Scala}
-
-Scala ofrece la construcción \code{for...yield}, una azucar sintáctica sobre
-\code{flatMap} y \code{map}:
-
-\begin{lstlisting}[language=Scala,style=base,caption={For-comprehension en Scala.}]
-val squares = for (x <- 0 until 5) yield x * x
-val pairs   = for {
-  x <- 1 to 3
-  y <- 1 to x
-} yield (x, y)
-\end{lstlisting}
-
-Scala es \textit{eager} para colecciones concretas como \code{Vector} y
-\textit{lazy} para vistas \code{.view}. La sintaxis es mas verbosa pero soporta
-multiples generadores y guardas. La elección de \hulk{} de exigir un solo
-generador minimiza la complejidad sintáctica al precio de la expresividad.
-
-\subsection{Comparación con C++20 ranges}
-
-C++20 introdujo el sistema de \textbf{ranges y views} con evaluación perezosa y
-composición por \textit{pipe}:
-
-\begin{lstlisting}[language=C++,style=base,caption={Ranges y views en C++20.}]
-auto squares = std::views::iota(0, 5)
-             | std::views::transform([](int x){ return x*x; });
-std::vector<int> v(squares.begin(), squares.end());  // materializa
-\end{lstlisting}
-
-C++ favorece evaluación perezosa con \textit{materialización explicita}, lo que
-permite optimizar la composición de transformaciones evitando allocaciones
-intermedias. Para \hulk{} --- que no posee \textit{iterators} genéricos ni un
-sistema de tipos con \textit{lifetimes} --- esta aproximación seria
-desproporcionadamente compleja.
-
-\subsection{Resumen comparativo}
+La familia de construcciones para crear vectores con patrones de
+inicialización es uno de los puntos del diseño de un lenguaje en los que
+más divergen las soluciones propuestas. La \cref{tab:vec-lang} resume las
+sintaxis equivalentes en siete lenguajes mayoritarios para las dos
+operaciones más comunes: ``buffer de $N$ ceros'' y ``buffer de $N$
+elementos calculados por una función del índice''.
 
 \begin{table}[H]
 \centering
-\caption{Comparativa de comprehensions/generators entre lenguajes.}
-\label{tab:comp-lang}
+\caption{Sintaxis de construcción de vectores en distintos lenguajes.}
+\label{tab:vec-lang}
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textsc{Lenguaje} & \textsc{Buffer en cero} & \textsc{Con generador por índice} \\
+\midrule
+HULK    & \code{new T[N]}                & \code{new T[N]\{ i -> f(i) \}} \\
+Java    & \code{new T[N]}                & \emph{No nativo (loop explícito)} \\
+Kotlin  & \code{IntArray(N)}             & \code{IntArray(N) \{ i -> f(i) \}} \\
+C\#     & \code{new T[N]}                & \code{Enumerable.Range(0,N).Select(f).ToArray()} \\
+Rust    & \code{vec![T::default(); N]}   & \code{(0..N).map(f).collect()} \\
+Python  & \code{[0] * N}                 & \code{[f(i) for i in range(N)]} \\
+Swift   & \code{Array(repeating:0,count:N)} & \code{(0..<N).map(f)} \\
+C       & \code{calloc(N, sizeof(T))}    & \emph{No nativo (loop explícito)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+La inspiración directa de la sintaxis de \hulk{} es la convención de
+Kotlin: constructor del vector seguido de un \emph{lambda} sobre el
+índice. La ventaja sobre el modelo Java/C ---en los que el programador
+debe alocar primero y rellenar después con un bucle--- es que
+\code{new T[N]\{i -> e\}} es una \emph{expresión}, no una secuencia de
+\emph{statements}, y por tanto puede aparecer en cualquier posición
+sintáctica: argumento de función, retorno, inicializador de \code{let},
+brazo de un \code{if}. La diferencia con Rust ---donde la sintaxis
+\code{(0..N).map(f).collect()} también es una expresión--- es que la
+versión Kotlin/\hulk{} liga el índice mediante una variable explícita
+($i$) en lugar de pasarlo a una función anónima ($\code{|i|}$ en sintaxis
+de cierre de Rust), lo que en programas con patrones de inicialización
+densos hace el código más legible.
+
+La forma generadora de \hulk{} ---$[b \mid x \in \text{iterable}]$---
+pertenece a la familia clásica de las \emph{list comprehensions}.
+\cref{tab:vec-gen-lang} compara la sintaxis y el modo de evaluación.
+
+\begin{table}[H]
+\centering
+\caption{Comparativa de comprehensions y generators entre lenguajes.}
+\label{tab:vec-gen-lang}
 \begin{tabularx}{\textwidth}{lXcXc}
 \toprule
 \textsc{Lenguaje} & \textsc{Sintaxis} & \textsc{Evaluación}
   & \textsc{Filtros} & \textsc{Tipos} \\
 \midrule
-HULK    & \code{[e | x in it]}            & Ansiosa      & No  & Estático inferido \\
-Python  & \code{[e for x in it if c]}     & Ansiosa/Diferida   & Sí  & Dinámico \\
-Haskell & \code{[e | x <- xs, c]}         & Diferida     & Sí  & Estático inferido \\
-Scala   & \code{for x <- xs yield e}      & Ansiosa/Diferida   & Sí  & Estático inferido \\
-C++20   & \code{xs | transform(f)}        & Diferida     & Sí  & Estático explícito \\
+HULK    & \code{[e | x in it]}            & Ansiosa     & No  & Estático inferido \\
+Python  & \code{[e for x in it if c]}      & Ansiosa/Diferida & Sí  & Dinámico \\
+Haskell & \code{[e | x <- xs, c]}          & Diferida    & Sí  & Estático inferido \\
+Scala   & \code{for x <- xs yield e}       & Ansiosa/Diferida & Sí  & Estático inferido \\
+C++20   & \code{xs | transform(f)}         & Diferida    & Sí  & Estático explícito \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{Decisiones de diseño de la extensión}
-\label{sec:decisiones-ext}
+La elección sintáctica de \hulk{} ---\code{|} como separador y \code{in}
+como palabra reservada, sin filtros, sin múltiples generadores--- es una
+versión minimalista de las comprehensions de Haskell~\cite{peytonjones2003},
+en cuya teoría unificadora con monads de Wadler~\cite{wadler1990}
+encuentran su fundamento.
 
-\subsection{Por que evaluación ansiosa y no perezosa}
+\subsection{Decisiones de diseño}
 
+\paragraph{Por qué evaluación ansiosa y no perezosa.}
 Tres argumentos sostienen la decisión de evaluación ansiosa.
+\emph{Primero}, con evaluación ansiosa el tamaño del vector se conoce
+antes de la asignación, por lo que se requiere una sola llamada a
+\code{malloc} con la capacidad exacta. La evaluación perezosa requeriría
+\emph{thunks} o continuaciones, estructuras que duplicarían la complejidad
+del \textit{runtime}. \emph{Segundo}, los compiladores de lenguajes
+perezosos ---GHC para Haskell--- invierten esfuerzo considerable en
+evitar el coste de la \emph{thunkificación} con análisis de demanda,
+análisis de \emph{strictness} y deforestación: un compilador educativo que
+delega la optimización en \llvm{} no puede sostener ese coste de
+desarrollo. \emph{Tercero}, \hulk{} tiene efectos de lado (\code{print},
+asignación destructiva), y la evaluación perezosa en presencia de efectos
+produce comportamientos sorprendentes porque el orden de evaluación deja
+de coincidir con el orden textual. La evaluación ansiosa garantiza que los
+efectos se producen de izquierda a derecha, en consonancia con la
+semántica del resto del lenguaje.
 
-\paragraph{Simplicidad del modelo de memoria.}
-Con evaluación ansiosa el tamaño del vector se conoce antes de la asignación,
-por lo que se requiere una sola llamada a \code{malloc} con la capacidad exacta.
-La evaluación perezosa requeriria \textit{thunks} (cierres con estado) o
-continuaciones, estructuras adicionales que duplicarian la complejidad del
-\textit{runtime} sin un beneficio significativo en el caso de uso típico.
+\paragraph{Por qué \code{|} como separador.}
+La barra vertical reproduce la notación matemática $\{f(x) \mid x \in S\}$
+y coincide con la convención de Haskell. El hecho de que \code{|} sea
+también el operador OR lógico introduce un conflicto \emph{shift/reduce}
+que se resuelve con \emph{lookahead} de dos tokens. Las alternativas
+consideradas y descartadas son: \code{[body for var in iterable]} (más
+familiar para programadores Python, pero introduce \code{for} en un
+contexto distinto al de los bucles), \code{[body : var in iterable]}
+(colisiona con la notación de tipo \code{x : T} ya presente en la
+gramática) y \code{[body || var in iterable]} (evita el conflicto pero
+rompe la correspondencia con la notación matemática).
 
-\paragraph{Rendimiento predecible.}
-Los compiladores de lenguajes perezosos como GHC para Haskell invierten esfuerzo
-considerable en evitar los \textit{overheads} de la \textit{thunkificación}: el
-análisis de demanda, el análisis de \textit{strictness} y la deforestación son
-optimizaciones complejas dedicadas a este problema. En un compilador con fines
-educativos que ya delega la optimización en \llvm{}, la evaluación ansiosa
-produce IR simple y fácil de optimizar con los \textit{passes} estandar.
+\paragraph{Por qué vectores inmutables en tamaño (no \code{push}/\code{pop}).}
+Los vectores no admiten operaciones de \code{push} o \code{pop}: una vez
+creados, su tamaño no cambia. Esta decisión se justifica por la
+simplicidad del \textit{runtime} (un buffer fijo con cabecera es trivial;
+vectores dinámicos requerirían estrategias de redimensión exponencial),
+por la semántica de expresión del lenguaje (todo en \hulk{} es una
+expresión y preservar la composición funcional
+\code{print([x*x | x in range(0,5)][3])} exige que el vector sea valor y
+no objeto con estado) y por el caso de uso educativo del lenguaje (los
+programas típicos operan sobre vectores de tamaño conocido).
 
-\paragraph{Consistencia con el resto del lenguaje.}
-\hulk{} tiene efectos de lado (\code{print}, asignación destructiva). La
-evaluación perezosa en presencia de efectos produce comportamientos sorprendentes
-porque el orden de evaluación deja de coincidir con el orden textual. La
-evaluación ansiosa garantiza que los efectos se producen de izquierda a derecha,
-en consonancia con la semántica del resto de \hulk{}.
+\paragraph{Por qué sintaxis Kotlin para la alocación con generador.}
+La elección de \code{new T[N]\{ i -> e \}} ---no \code{T.tabulate(N, f)}
+ni \code{(0..N).map(f)}--- prioriza tres criterios: la \emph{expresividad
+como expresión} (vs. la secuencia de statements de Java); la
+\emph{variable de índice explícita} (vs. el valor constante de la
+repetición de Rust \code{vec![v;n]}); y la \emph{reutilización del
+operador \code{new}} (consistencia con la construcción de objetos sin
+introducir un verbo adicional).
 
-\subsection{Por que la barra simple \code{|} como separador}
+\paragraph{Por qué el modelo \emph{jagged} para vectores 2D.}
+La elección por el modelo \emph{jagged} ---vector de vectores con un
+nivel de indirección--- y no por el modelo \emph{rectangular} ---bloque
+contiguo con aritmética de índices--- responde al principio de minimizar
+la extensión del sistema de tipos: \code{T[][]} es expresable como
+$\code{Vector<Vector<T>>}$ sin introducir un nuevo constructor. El modelo
+rectangular ofrecería mejor localidad de caché para algoritmos numéricos
+densos, pero requeriría un \code{HulkType::Matrix} distinto, un layout de
+\textit{runtime} separado y reglas de conformidad específicas. Para los
+casos de uso esperados de \hulk{} ---programas educativos, no cómputo
+numérico de alto rendimiento--- el coste asintótico del modelo
+\emph{jagged} es comparable y la flexibilidad ganada (filas heterogéneas,
+redimensión independiente) excede al beneficio del modelo rectangular.
 
-La barra vertical reproduce la notación matemática $\{f(x) \mid x \in S\}$ y
-coincide con la convención de Haskell \code{[f x | x <- xs]}. El hecho de que
-\code{|} sea también el operador OR lógico introduce un conflicto shift/reduce
-que se resuelve con un \textit{lookahead} adicional. Alternativas consideradas:
-
-\begin{itemize}
-  \item \code{[body for var in iterable]} --- mas familiar para programadores
-    Python, pero introduce el keyword \code{for} en un contexto distinto al de
-    los bucles \code{for}, lo que dificulta el aprendizaje del lenguaje.
-  \item \code{[body : var in iterable]} --- colisiona con la notación de tipo
-    \code{x : T} ya presente en la gramática de \hulk{}.
-  \item \code{[body || var in iterable]} --- evita el conflicto pero rompe la
-    correspondencia con la notación matemática.
-\end{itemize}
-
-\subsection{Por que vectores inmutables (tamaño fijo)}
-
-Los vectores de \hulk{} no tienen operaciones de \code{push} o \code{pop}: una vez
-creados, su tamaño no cambia. Las modificaciones afectan solo a los elementos.
-Esta decisión se justifica por:
-
-\begin{enumerate}
-  \item \textbf{Simplicidad del runtime}: un buffer fijo con cabecera es trivial.
-    Vectores dinámicos requeririan estrategias de redimensión (duplicar
-    capacidad) que duplicarian la complejidad de la biblioteca de soporte.
-  \item \textbf{Semántica de expresión}: en \hulk{} todo es una expresión. Un
-    vector dinámico con mutación es un objeto con estado, lo que rompe la
-    composición funcional que permite escribir
-    \code{print([x*x | x in range(0,5)][3])}.
-  \item \textbf{Caso de uso del lenguaje}: \hulk{} es un lenguaje educativo;
-    sus programas típicos son cortos y operan sobre vectores de tamaño conocido.
-\end{enumerate}
-
-% ════════════════════════════════════════════════════════════════════════════
-\chapter{Cobertura de la especificación}
-\label{cap:cov}
-% ════════════════════════════════════════════════════════════════════════════
-
-\lettrine[lines=2,findent=2pt,nindent=0pt]{E}{ste} capítulo cuantifica el grado de
-cobertura del compilador respecto a la especificación oficial del lenguaje
-\hulk{}. La especificación organiza el lenguaje en las secciones A.2 a A.14 de
-su apéndice gramatical: las secciones A.2 a A.8 forman el núcleo del lenguaje,
-mientras que las restantes describen extensiones opcionales que pueden
-incorporarse de manera incremental.
-
-\section{Tabla de cobertura por sección}
-
-\begin{table}[H]
-\centering
-\caption{Cobertura de la especificación oficial de \hulk{} por sección.}
-\label{tab:cobertura}
-\begin{tabularx}{\textwidth}{clcc}
-\toprule
-\textsc{Sec.} & \textsc{Característica} & \textsc{Obl.} & \textsc{Estado} \\
-\midrule
-A.2.1 & Expresiones aritméticas, precedencia & si & \done \\
-A.2.2 & Cadenas, concatenación, escapes      & si & \done \\
-A.2.3 & Funciones matemáticas builtin        & si & \done \\
-A.2.4 & Bloques de expresiones               & si & \done \\
-A.3   & Funciones (inline y completas)       & si & \done \\
-A.4   & Variables y \code{let}-\code{in}     & si & \done \\
-A.4.6 & Asignación destructiva               & si & \done \\
-A.5   & Condicionales \code{if}-\code{elif}-\code{else} & si & \done \\
-A.6.1 & Ciclo \code{while}                   & si & \done \\
-A.6.2 & Ciclo \code{for}                     & si & \done \\
-A.7   & Tipos, herencia, \code{self}, \code{base()} & si & \done \\
-A.8.1 & Anotaciones de tipo                  & si & \done \\
-A.8.2 & Conformidad \code{<=}                & si & \done \\
-A.8.3 & Operador \code{is}                   & si & \done \\
-A.8.4 & Operador \code{as} (downcast)        & si & \done \\
-\midrule
-A.9   & Inferencia de tipos (parcial)        & no & \halfdone \\
-A.10  & Protocolos y conformidad estructural & no & \done \\
-A.11  & Iterables (\code{Iterable}/\code{Range})  & no & \done \\
-A.12  & \textbf{Vectores y generadores (extensión)} & no & \done \\
-A.13  & Funtores y lambdas                   & no & \miss \\
-A.14  & Macros con pattern matching          & no & \miss \\
-\midrule
-\multicolumn{2}{r}{\textsc{Cobertura obligatoria}}  & \multicolumn{2}{c}{\textbf{100\%}} \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\section{Ejemplos representativos}
-
-El compilador es capaz de procesar programas como los siguientes, que ejercitan
-multiples características a la vez.
-
-\subsection{Herencia y polimorfismo}
-
-\begin{lstlisting}[style=hulkst, caption={Herencia, polimorfismo y vectores
-  heterogeneos.}]
-type Animal(name: String) {
-    name = name;
-    speak(): String => "...";
-    greet(): String =>
-        "I am " @@ self.name @@ " and I say: " @@ self.speak();
-}
-
-type Dog(name: String) inherits Animal(name) {
-    speak(): String => "Woof!";
-}
-
-type Cat(name: String) inherits Animal(name) {
-    speak(): String => "Meow!";
-}
-
-let zoo = [new Dog("Rex"), new Cat("Whiskers")] in
-for (a in zoo) print(a.greet());
-\end{lstlisting}
-
-\subsection{Protocolos con conformidad estructural}
-
-\begin{lstlisting}[style=hulkst, caption={Protocolos y conformidad implicita.}]
-protocol Printable {
-    to_str(): String;
-}
-
-type Point(x: Number, y: Number) {
-    x = x; y = y;
-    to_str(): String => "(" @ x @ ", " @ y @ ")";
-}
-
-function show(item: Printable) => print(item.to_str());
-show(new Point(3, 4));
-\end{lstlisting}
-
-\subsection{Vectores y generadores}
-
-\begin{lstlisting}[style=hulkst, caption={Calculo de los primeros 10 Fibonacci con
-  generadores.}]
-function fib(n: Number): [Number] =>
-    let result = [0 | i in range(0, n)] in {
-        result[0] := 0; result[1] := 1;
-        for (i in range(2, n)) result[i] := result[i-1] + result[i-2];
-        result
-    };
-
-for (x in fib(10)) print(x);
-\end{lstlisting}
+\paragraph{Por qué llaves con coma obligatoria.}
+Discutida en el cuerpo de \cref{subsec:formas-vec}: la coma obligatoria
+$\{\,\text{Expr}\,,\,\text{ArgListNonEmpty}\,\}$ resuelve el conflicto
+\emph{shift/reduce} con la producción del bloque de expresiones
+$\{\,\text{ExprList}\,\}$ sin recurrir a un parser LALR($k$) con $k > 1$.
+La alternativa ---introducir una sintaxis distintiva inequívoca como
+\code{\#\{1,2,3\}} de Clojure o \code{vec[1,2,3]} de Rust con macros---
+sería visualmente disruptiva y rompería la expectativa del programador
+con experiencia en C.
 
 % ════════════════════════════════════════════════════════════════════════════
 \chapter{Decisiones de diseño significativas}
@@ -2373,13 +2932,13 @@ lugar de generarse a partir de YACC, Bison, LALRPOP o ANTLR.
     pudo identificarse y resolverse inspeccionando la tabla generada, sin
     necesidad de recompilar el compilador entre iteraciones.
   \item[Coste]
-    Implementación mas larga (aproximadamente 800 LOC adicionales solo para el
-    modulo LALR) y mayor tiempo de \textit{startup} debido a que las tablas se
+    Implementación más larga (aproximadamente 800 LOC adicionales solo para el
+    módulo LALR) y mayor tiempo de \textit{startup} debido a que las tablas se
     construyen en cada invocación. Este \textit{overhead} es de pocos
     milisegundos en programas típicos.
 \end{description}
 
-\section{LLVM como backend vs interprete vs VM propia}
+\section{LLVM como backend vs intérprete vs VM propia}
 
 La especificación permite generar código máquina directamente, usar LLVM, o
 implementar una máquina virtual propia.
@@ -2388,7 +2947,7 @@ implementar una máquina virtual propia.
   \item[Argumento principal]
     \textit{Calidad del código generado.} \llvm{} produce código comparable al
     de \code{gcc -O2} para estructuras comunes. Una máquina virtual propia o un
-    interprete serian varios ordenes de magnitud mas lentos para programas con
+    intérprete serían varios órdenes de magnitud más lentos para programas con
     aritmética intensiva.
   \item[Argumento secundario]
     \textit{Portabilidad.} El mismo IR de \llvm{} puede compilarse para x86-64,
@@ -2418,7 +2977,7 @@ Para implementar el polimorfismo dinámico se evaluaron tres alternativas:
 
 \section{Type tags DFS pre-orden vs class objects}
 
-El test de tipo \code{is} se podria implementar de varias formas:
+El test de tipo \code{is} se podría implementar de varias formas:
 
 \begin{enumerate}
   \item \textbf{Recorrer la cadena de herencia} en \textit{runtime} comparando
@@ -2447,54 +3006,107 @@ herramientas del sistema.
 % ════════════════════════════════════════════════════════════════════════════
 
 \lettrine[lines=2,findent=2pt,nindent=0pt]{L}{a} validación del compilador se
-realiza mediante una bateria de pruebas automatizadas que cubren todas las fases
-y todas las construcciones del lenguaje. Esta sección describe la estructura de
-las pruebas y los resultados obtenidos.
+apoya en dos niveles complementarios: pruebas unitarias escritas en \rust{}
+que ejercen cada módulo de forma aislada, y programas \hulk{} completos que
+recorren el pipeline de extremo a extremo. Esta sección describe la
+distribución de ambas categorías y el contrato de errores que el compilador
+expone al usuario.
 
-\section{Estructura de la suite de pruebas}
+\section{Pruebas unitarias por módulo}
+
+Las pruebas unitarias residen junto al código que verifican y se ejecutan con
+\code{cargo test}. La tabla~\ref{tab:pruebas} resume su distribución; los
+totales corresponden al recuento real de funciones marcadas con \code{\#[test]}
+en el árbol de fuentes.
 
 \begin{table}[H]
 \centering
-\caption{Distribución de las pruebas automatizadas por modulo.}
+\caption{Distribución de las pruebas unitarias por módulo.}
 \label{tab:pruebas}
 \begin{tabularx}{\textwidth}{lrX}
 \toprule
-\textsc{Modulo} & \textsc{Tests} & \textsc{Cobertura} \\
+\textsc{Módulo} & \textsc{Tests} & \textsc{Cobertura} \\
 \midrule
-Lexer      & 87  & Todos los tipos de token, edge cases, escapes \\
-Parser     & 112 & Todos los no-terminales, precedencia, asociatividad \\
-Semántico  & 98  & Inferencia, protocolos, errores de tipo \\
-Codegen    & 87  & Aritmética, flujo, OOP, vectores, rangos, builtins \\
+Lexer      & 36  & Construcción de Thompson, parser de regex, MasterNFA,
+                   tokenización con regla del máximo prefijo. \\
+Parser     & 117 & FIRST y FOLLOW, construcción LALR, motor de parseo,
+                   gramática completa, traducción de tokens, programas reales. \\
+Semántico  & 140 & Resolución de tipos, conformidad estructural, inferencia
+                   en condicionales, protocolos, declaraciones, errores. \\
+Codegen    & 94  & Aritmética, flujo de control, OOP con herencia, despacho
+                   dinámico, vectores, rangos y funciones predefinidas. \\
 \midrule
-\textbf{Total} & \textbf{384} & \\
+\textbf{Total} & \textbf{387} & \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\section{Programas de prueba completos}
+\section{Programas \hulk{} de integración}
 
-Mas alla de las pruebas unitarias, el repositorio incluye 22 programas
-\hulk{} completos en \code{tests/hulk/}, organizados por categoría:
+El directorio \code{tests/hulk/} contiene programas completos que el
+compilador debe procesar de extremo a extremo. Los programas en \code{ok/} se
+compilan, se enlazan con el \textit{runtime} y se ejecutan; su salida estándar
+se compara contra el archivo \code{.expected} asociado. Los programas en
+\code{errors/} deben fallar en la fase indicada por el subdirectorio y
+respetar el contrato de errores descrito más abajo.
 
-\begin{itemize}
-  \item \code{ok/minimal/}: 9 programas (aritmética, condicionales, funciones,
-    hola mundo, \code{let}-\code{in}, cadenas, ciclos).
-  \item \code{ok/oop/}: 3 programas (clase básica, herencia, mutación).
-  \item \code{ok/types/}: 3 programas (anotaciones, builtins, inferencia).
-  \item \code{ok/extras/}: 2 programas (for, range).
-  \item \code{errors/}: 5 programas que deben fallar con un mensaje específico.
-\end{itemize}
+La suite cubre 101 programas distribuidos como muestra la
+tabla~\ref{tab:pruebas-int}.
 
-Cada programa se compila y ejecuta, comparando la salida estandar contra una
-salida esperada. Los programas de error verifican adicionalmente que el código
-de salida sea distinto de cero y que el mensaje siga el formato del contrato de
-interfaz.
+\begin{table}[H]
+\centering
+\caption{Programas \hulk{} de integración por categoría.}
+\label{tab:pruebas-int}
+\begin{tabularx}{\textwidth}{lrX}
+\toprule
+\textsc{Categoría} & \textsc{Programas} & \textsc{Contenido} \\
+\midrule
+\code{ok/minimal/}    & 20 & Aritmética, condicionales, funciones, cadenas,
+                              \code{let}-\code{in}, ciclos básicos. \\
+\code{ok/oop/}        & 10 & Tipos con atributos y métodos, herencia, mutación,
+                              despacho dinámico, llamadas a \code{base()}. \\
+\code{ok/types/}      & 10 & Anotaciones explícitas, inferencia, conversiones,
+                              funciones y constantes predefinidas. \\
+\code{ok/interfaces/} &  6 & Declaración de protocolos, conformidad estructural,
+                              parámetros y retornos polimorfos, herencia. \\
+\code{ok/generators/} &  6 & Implementaciones del protocolo \code{Iterable}
+                              definidas en \hulk{} y consumidas con \code{for}. \\
+\code{ok/arrays/}     &  8 & Literales con llaves, asignación con \code{new T[N]},
+                              forma generadora, vectores bidimensionales,
+                              mutación, paso por parámetro, \code{size()}. \\
+\code{ok/extras/}     & 10 & Combinaciones de \code{for}, \code{while}, rangos,
+                              ciclos anidados y uso de \code{for} dentro de
+                              \code{let}. \\
+\midrule
+\code{errors/lexical/}   &  6 & Caracteres no reconocidos y literales mal
+                                formados. \\
+\code{errors/semantic/}  & 15 & Variables no declaradas, incompatibilidad de
+                                tipos, conformidad rota, aridad incorrecta. \\
+\code{errors/syntactic/} & 10 & Programas sintácticamente mal formados que
+                                deben rechazarse en la fase de parseo. \\
+\midrule
+\textbf{Total} & \textbf{101} & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Las categorías \code{ok/interfaces/}, \code{ok/generators/} y \code{ok/arrays/}
+ejercen específicamente las extensiones documentadas en el capítulo~\ref{cap:ext}:
+protocolos con conformidad estructural, el protocolo \code{Iterable} y los
+vectores con todas sus formas de construcción y anotaciones. Los programas de
+los subdirectorios \code{ok/lambdas/} y \code{ok/macros/} corresponden a
+funcionalidades que no forman parte de la implementación actual
+(véase el capítulo~\ref{cap:lim}) y se conservan en el repositorio como
+material de referencia para trabajo futuro.
 
 \section{Contrato de errores}
 
 El compilador respeta el contrato de interfaz asociado al lenguaje: los errores
 se reportan por \code{stderr} con el prefijo \code{!\ } y el formato
-\code{(línea,col) FASE: mensaje}; el proceso termina con código de salida $\neq 0$.
+\code{(línea,col) FASE: mensaje}; el proceso termina con código de salida
+distinto de cero. Los programas de \code{errors/} verifican tanto el código de
+salida como que el mensaje siga este formato, de modo que cualquier regresión
+en el reporte de errores se detecta de forma automática.
 
 % ════════════════════════════════════════════════════════════════════════════
 \chapter{Limitaciones conocidas y trabajo futuro}
@@ -2518,18 +3130,6 @@ correspondiente gestión de tiempo de vida sobre el entorno. La adición es
 mecánica pero no trivial: el código actual del codegen y el del semántico están
 construidos bajo el supuesto de que toda función es global, y ese supuesto
 permea muchas estructuras de datos.
-
-\paragraph{Procesamiento de secuencias de escape.}
-Como se anticipó en el análisis léxico, las secuencias \code{\textbackslash n},
-\code{\textbackslash t}, \code{\textbackslash"} y \code{\textbackslash\textbackslash}
-no se descodifican y aparecen literalmente en la salida. La implementación es
-breve (un bucle sobre los caracteres del lexema), pero requiere decidir
-cuidadosamente dónde se realiza la descodificación: hacerlo en el \textit{lexer}
-desincroniza la posición del lexema con la del fuente original, lo que dañaría la
-calidad de los mensajes de error; hacerlo en la fase semántica preserva la
-posición pero implica recorrer el lexema dos veces (una para descodificar, otra
-para construir el literal). Esta es una de las tareas pendientes de menor
-complejidad y mayor visibilidad para el usuario.
 
 \paragraph{Gestión de memoria.}
 El compilador adopta una estrategia de \textit{solo-asignación}: las cadenas y
@@ -2569,8 +3169,8 @@ estrategia de redimensión exponencial para amortizar el coste.
   \item \textbf{Generadores perezosos}: variantes lazy de las expresiones
     generadoras para permitir colecciones conceptualmente infinitas.
   \item \textbf{Inferencia Hindley-Milner completa}: el sistema actual infiere
-    tipos a traves de expresiones simples pero no resuelve constraints
-    polimorficos complejos. H-M permitiria funciones genéricas como
+    tipos a través de expresiones simples pero no resuelve constraints
+    polimórficos complejos. H-M permitiría funciones genéricas como
     \code{function map(v: [A], f: A -> B): [B]}.
   \item \textbf{Optimizaciones específicas de HULK}: \textit{inlining} de
     métodos monomorficos, análisis de escape para objetos de corta vida
@@ -2617,7 +3217,7 @@ La extensión de vectores con expresiones generadoras sitúa a \hulk{} en la
 familia de lenguajes que ofrecen soporte de primera clase para transformaciones
 declarativas de colecciones, junto a Python, Haskell, Scala y, más
 recientemente, C++20. Las diferencias respecto a esos cuatro lenguajes ---y
-documentadas con detalle en la \cref{tab:comp-lang}--- no son tanto de
+documentadas con detalle en la \cref{tab:vec-gen-lang}--- no son tanto de
 expresividad como de \emph{integración}: la extensión convive con el sistema
 de tipos estático del lenguaje, con los protocolos estructurales y con la
 jerarquía de objetos sin introducir un subsistema paralelo. El precio asumido
@@ -2625,13 +3225,13 @@ ha sido renunciar a filtros, a generadores múltiples y a evaluación perezosa;
 el beneficio, un \textit{runtime} de pocos cientos de bytes y un IR \llvm{}
 que el \textit{pass manager} optimiza con la misma eficacia que un bucle
 aritmético equivalente escrito a mano. Cada uno de esos compromisos está
-justificado por separado en la \cref{sec:decisiones-ext}.
+justificado por separado en la sección de decisiones de diseño de
+\cref{sec:ext-vec}.
 
 \vspace{1em}
 Las direcciones de trabajo enumeradas en el \cref{cap:lim} delimitan las
 extensiones naturales del compilador en su estado actual: la introducción de
-funciones de primera clase con cierres léxicos, el procesamiento de las
-secuencias de escape en literales de cadena, la recuperación de errores
+funciones de primera clase con cierres léxicos, la recuperación de errores
 sintácticos para reportar múltiples errores en una sola compilación, y la
 sustitución del esquema actual de asignación monotónica por un
 \textit{allocator} basado en regiones ligadas al ámbito de las expresiones
@@ -2734,6 +3334,17 @@ Programming}, pp.~61--78, 1990.
 N.~Wirth.
 ``The Design of a Pascal Compiler''.
 \textit{Software: Practice and Experience}, 1(4):309--333, 1971.
+
+\bibitem{liskov1994}
+B.~H. Liskov, J.~M. Wing.
+``A Behavioral Notion of Subtyping''.
+\textit{ACM Transactions on Programming Languages and Systems},
+16(6):1811--1841, 1994.
+
+\bibitem{bracha1990}
+G.~Bracha, W.~Cook.
+``Mixin-Based Inheritance''.
+\textit{Proceedings of OOPSLA/ECOOP '90}, pp.~303--311, 1990.
 
 \end{thebibliography}
 
