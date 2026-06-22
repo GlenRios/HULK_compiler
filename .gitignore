@@ -10,10 +10,8 @@ Cargo.lock
 *~
 
 *.log
-*.exe
 
 /todo/
 /notes/hulk_runtime.a
 /output
-output.exe
 .hulk_cache/
